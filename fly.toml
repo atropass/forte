@@ -1,0 +1,32 @@
+# Secrets (not in this file): API_KEY, VLM_API_BASE, VLM_API_KEY  ->  flyctl secrets set ...
+app = "forte-vision"
+primary_region = "fra"
+
+[build]
+  dockerfile = "docker/fly.Dockerfile"
+
+[env]
+  VLM_CONCURRENCY = "16"
+  JOB_TIMEOUT_S = "900"
+
+[[mounts]]
+  source = "forte_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = "off"   # jobs run in-process; a stopped machine would kill a running analysis
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/healthz"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "120s"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "4096mb"
