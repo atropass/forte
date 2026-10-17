@@ -40,8 +40,11 @@
 | `pipeline/legal.py` + `legal/norms.yaml` | legal references are looked up, never generated |
 | `pipeline/evidence.py` | 1–3 evidence frames with the relevant object outlined |
 | `pipeline/analyze.py` | orchestration, progress callback, exact API schema |
-| `service/app.py`, `service/jobs.py` | FastAPI, `X-API-Key`, persistent single-GPU job queue |
-| `forte-vision-ai-development/` | Next.js UI (static export), served by nginx (prod) or FastAPI (dev) |
+| `service/app.py` | stateless FastAPI: jury API (`X-API-Key`), web-UI sessions, upload validation, health/metrics |
+| `service/worker.py`, `worker_main.py`, `jobqueue.py`, `reaper.py` | RQ workers (process per job, hard timeout, retry on GPU outage), job recovery |
+| `service/state.py`, `auth.py`, `blob.py` | job state, accounts, API keys in Redis; files in S3 / shared disk |
+| `service/cv_service.py` | RT-DETRv2 detector microservice on the GPU server |
+| `forte-vision-ai-development/` | Next.js UI (static export), served by the API |
 
 ## Why this approach
 * **40 videos are far too few for end-to-end video classification**, and the test set uses a new camera

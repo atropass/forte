@@ -17,9 +17,22 @@ pkill -f "supervisord" || true
 pkill -f "nginx: master" || true
 sleep 2
 
-# Export default production API key if unset
-export VLLM_API_KEY="${VLLM_API_KEY:-fv-prod-secret-forte-2026}"
-echo "==> Production API Key set (hash: ${VLLM_API_KEY:0:8}...)"
+# Secrets from /workspace/secrets.env (chmod 600, never committed): VLLM_API_KEY=..., CV_API_KEY=...
+SECRETS="${SECRETS_FILE:-/workspace/secrets.env}"
+if [[ ! -f "$SECRETS" ]]; then
+  echo "error: $SECRETS not found (needs VLLM_API_KEY=... and CV_API_KEY=...)" >&2
+  exit 1
+fi
+chmod 600 "$SECRETS"
+set -a
+# shellcheck disable=SC1090
+source "$SECRETS"
+set +a
+if [[ -z "${VLLM_API_KEY:-}" || ${#VLLM_API_KEY} -lt 24 ]]; then
+  echo "error: VLLM_API_KEY missing or shorter than 24 characters in $SECRETS" >&2
+  exit 1
+fi
+echo "==> API key loaded from $SECRETS"
 
 # Start supervisord daemon
 echo "==> Starting supervisord..."

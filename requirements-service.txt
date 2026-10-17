@@ -1,10 +1,15 @@
-# Service + pipeline deps common to both backends (vLLM image already ships torch/transformers/vllm).
+# Analysis service (API + workers). Pinned for reproducible builds; bump deliberately and re-run the tests.
+# The GPU pods have their own stacks (vLLM image / torch + transformers for the CV service).
 fastapi==0.143.3
+starlette==1.7.0
 uvicorn[standard]==0.54.0
-python-multipart
-pyyaml
-pillow
-numpy
-jsonschema
-httpx
-boto3                        # report archive in S3-compatible storage (Tigris on Fly); only used when BUCKET_NAME is set
+python-multipart==0.0.32
+pydantic==2.14.1
+pyyaml==6.0.3
+pillow==12.3.0
+numpy==2.2.6
+httpx==0.28.1
+boto3==1.43.114
+redis==8.1.0
+rq==2.12.0
+prometheus-client==0.26.0

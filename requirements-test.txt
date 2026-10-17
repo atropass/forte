@@ -1,0 +1,6 @@
+# Tests of the service (no models, no Redis server, no GPU)
+-r requirements-service.txt
+pytest==9.1.1
+jsonschema==4.26.0
+fakeredis==2.40.0
+moto[s3]==5.2.4
