@@ -122,6 +122,9 @@ def load_models():
                      models={"vlm_backend": backend.name, "vlm": backend.model_id, "vlm_aux": aux_id or None,
                              "detector": det.model_id, "device": det.device})
         log.info("models loaded in %.1fs: %s", time.time() - t, state["models"])
+        state["served"] = served_models()
+        for w in calibration()["warnings"]:
+            log.warning("CALIBRATION: %s", w)
     except Exception as e:  # noqa: BLE001
         state["load_error"] = f"{type(e).__name__}: {e}"
         log.exception("model loading failed")
@@ -206,10 +209,28 @@ def me(user: str = Depends(require_user)):
     return {"username": user}
 
 
+def served_models() -> list[str] | None:
+    """Models the VLM server actually serves (asked once per model load, so /healthz stays fast)."""
+    an = state["analyzer"]
+    if an is None:
+        return None
+    if not hasattr(an.vlm.backend, "served_models"):
+        return [an.vlm.backend.model_id]  # in-process backend: the loaded model is the served one
+    try:
+        return an.vlm.backend.served_models()
+    except Exception as e:  # noqa: BLE001
+        return [f"unavailable: {type(e).__name__}"]
+
+
+def calibration() -> dict:
+    from pipeline.vlm import calibration_info
+    return calibration_info(state.get("served"))
+
+
 @app.get("/healthz")
 def healthz():
     return {"ok": state["analyzer"] is not None, "models": state["models"], "load_error": state["load_error"],
-            "queue": worker.q.qsize(), "current_job": worker.current}
+            "queue": worker.q.qsize(), "current_job": worker.current, "calibration": calibration()}
 
 
 @app.post("/api/v1/analyze")

@@ -8,6 +8,8 @@ primary_region = "fra"
 [env]
   VLM_CONCURRENCY = "16"
   JOB_TIMEOUT_S = "900"
+  # RT-DETRv2 on the team's CV pod (token = VLM_API_KEY); unset -> detector runs on the Fly CPU
+  DET_API_BASE = "https://ydfg26qe73blrr-8000.proxy.runpod.net"
 
 [[mounts]]
   source = "forte_data"

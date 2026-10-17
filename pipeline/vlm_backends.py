@@ -195,6 +195,11 @@ class OpenAICompatBackend(VLMBackend):
             headers={"Authorization": f"Bearer {key}"} if key else {},
             limits=httpx.Limits(max_connections=self.concurrency, max_keepalive_connections=self.concurrency))
 
+    def served_models(self) -> list[str]:
+        """Model ids and checkpoint paths the server actually serves (vLLM: id = served name, root = weights)."""
+        data = self.client.get("/models").json().get("data", [])
+        return sorted({x for d in data for x in (d.get("id"), d.get("root")) if x})
+
     def _content(self, r: VLMRequest) -> list[dict]:
         import base64
         import io

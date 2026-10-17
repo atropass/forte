@@ -27,6 +27,28 @@ SCORE_PREAMBLE = (
 )
 
 
+def calibration_info(served: list[str] | None = None) -> dict:
+    """What the deployed service decides with: thresholds file, the model it was calibrated for, gated rules.
+    `served` = model ids/paths the VLM server reports; calibrated thresholds are only valid for that model."""
+    import re
+    head = _THR_FILE.read_text().splitlines()[0] if _THR_FILE.exists() else ""
+    m = re.search(r"model (\S+)", head)
+    calibrated_for = m.group(1) if m else None
+    qs = {k: float(v) for k, v in (THRESHOLDS or {}).items() if isinstance(v, (int, float))}
+    info = {"thresholds_file": str(_THR_FILE), "calibrated": bool(qs), "calibrated_for": calibrated_for,
+            "thresholds": qs, "enabled_rules": (THRESHOLDS or {}).get("enabled_rules") or [], "warnings": []}
+    if not qs:
+        info["warnings"].append("thresholds.yaml missing/empty: defaults from questions.yaml are used (uncalibrated)")
+    if served is not None:
+        info["served_models"] = served
+        info["model_match"] = bool(calibrated_for) and any(calibrated_for in s or s.endswith(calibrated_for.split("/")[-1])
+                                                           for s in served)
+        if not info["model_match"]:
+            info["warnings"].append(f"VLM server serves {served}, thresholds were calibrated for {calibrated_for}: "
+                                    "re-run make calibrate or switch the server back")
+    return info
+
+
 def threshold(qid: str) -> float:
     if qid in (THRESHOLDS or {}):
         return float(THRESHOLDS[qid])
