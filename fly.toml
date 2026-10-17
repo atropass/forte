@@ -16,8 +16,7 @@ kill_timeout = 300   # let running analyses finish on deploys / restarts
   WORKER_COUNT = "2"
   VLM_CONCURRENCY = "16"
   JOB_TIMEOUT_S = "290"
-  # RT-DETRv2 on the team's CV pod (token = VLM_API_KEY unless DET_API_KEY is set)
-  DET_API_BASE = "https://ydfg26qe73blrr-8000.proxy.runpod.net"
+  # GPU pod addresses and tokens are secrets: VLM_API_BASE / VLM_API_KEY, DET_API_BASE / DET_API_KEY (CV pod)
 
 [[mounts]]
   source = "forte_data"
