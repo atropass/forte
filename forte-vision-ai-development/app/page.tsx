@@ -54,6 +54,11 @@ export default function Page() {
   useEffect(() => { const k = getApiKey(); setKey(k); setKeyDraft(k); if (!k) setApiOpen(true) }, [])
   useEffect(() => { if (apiKey) getCatalog(apiKey).then(setCatalog).catch(() => setCatalog(null)) }, [apiKey])
   useEffect(() => () => { if (pollRef.current) window.clearTimeout(pollRef.current) }, [])
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setLightbox(null); setCatalogOpen(false); setApiOpen(false) } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const violations: Violation[] = result?.violations ?? []
   const byCode = useMemo(() => Object.fromEntries((catalog?.items ?? []).map((i) => [i.code, i])), [catalog])
@@ -131,10 +136,10 @@ export default function Page() {
       <div className="mx-auto flex max-w-[1500px] items-center justify-between gap-4 px-5 py-3 lg:px-8">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2"><span className="forte-mark">F</span><span className="text-[18px] font-extrabold tracking-[-0.04em]">Forte</span></div>
-          <span className="h-7 w-px bg-white/20" /><span className="text-sm font-semibold tracking-wide text-[#61cfff]">Cash Compliance AI</span>
+          <span className="hidden h-7 w-px bg-white/20 sm:block" /><span className="hidden text-sm font-semibold tracking-wide text-[#61cfff] sm:block">Cash Compliance AI</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="status-pill hidden md:flex"><span className="live-dot" /> Локальный AI: {modelLabel} <span className="opacity-50">·</span> On-Premise</div>
+          <div className="hidden lg:block"><div className="status-pill"><span className="live-dot" /> Локальный AI: {modelLabel} <span className="opacity-50">·</span> On-Premise</div></div>
           <Button onClick={() => setCatalogOpen(true)} variant="ghost" className="hidden text-white hover:bg-white/10 hover:text-white sm:inline-flex"><Info data-icon="inline-start" /> НПА РК · справочник</Button>
           <div className="relative"><Button onClick={() => setApiOpen(!apiOpen)} variant="ghost" className="text-white hover:bg-white/10 hover:text-white"><LockKeyhole data-icon="inline-start" /> API Key{apiKey ? '' : ' !'}</Button>{apiOpen && <div className="popover"><p className="mb-2 text-xs font-semibold text-[#6e6c83]">X-API-Key</p><div className="flex items-center gap-2"><input type="password" autoComplete="off" placeholder="ключ доступа" className="w-36 rounded-md border border-[#dedee9] bg-[#f0f0f7] px-2 py-1.5 text-xs text-[#1e1b39]" value={keyDraft} onChange={(e) => setKeyDraft(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveKey() }} /><Button size="sm" onClick={saveKey}>Сохранить</Button></div><p className="mt-2 text-[10px] text-[#6e6c83]">Ключ хранится только в этом браузере.</p></div>}</div>
           <Button onClick={() => { reset(); inputRef.current?.click() }} className="bg-[#a31551] text-white hover:bg-[#bf015d]"><Plus data-icon="inline-start" /> <span className="hidden sm:inline">Новая проверка</span></Button>
