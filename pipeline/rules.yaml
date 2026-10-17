@@ -193,6 +193,7 @@ types:
     subtype: Клиент вошёл, когда кассир не был готов
     trigger: visitor_arrived
     checks: [{q: cashier_ready, offsets: [0.0, 1.0, 2.0], min_yes: 2}]
+    requires_cashier_not_seated: true   # scene state must show the cashier NOT seated when the visitor enters
     timecode_offset: 0
     observed: "На {t} с в помещение входит клиент, когда кассир ещё не готов к обслуживанию (стоит или настраивает оборудование)."
     reason: "Обслуживание клиента начато до подготовки рабочего места кассира."

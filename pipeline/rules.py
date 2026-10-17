@@ -188,6 +188,10 @@ def decide(checks: list[Check], periodic_min_consecutive: int = 2, seated_at=Non
                 v.observed = v.observed.replace("{items}", ", ".join(f"{i['item']} ({i.get('where', '')})" for i in items))
                 out.append(v)
             continue
+        if rule.get("requires_cashier_not_seated") and seated_at is not None:
+            # two independent signals: the scene-state pass must also see the cashier away from her seat
+            if any(seated_at(t) for t in c.times):
+                continue
         fired, mean = votes(c)
         if c.periodic:
             if rule.get("periodic_requires_seated") and seated_at is not None and not seated_at(c.trigger_t):

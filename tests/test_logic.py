@@ -112,3 +112,10 @@ def test_calibration_gated_rules_off_by_default(monkeypatch):
     assert rules.rule_enabled("money_left_unattended", rules.RULES["money_left_unattended"])
     monkeypatch.setattr(rules, "THRESHOLDS", {"enabled_rules": ["partial_disbursement"]})
     assert rules.rule_enabled("partial_disbursement", rules.RULES["partial_disbursement"])
+
+
+def test_not_ready_rule_needs_cashier_not_seated():
+    c = Check("client_admitted_workplace_not_ready", "cashier_ready", 2.0, [2.0, 3.0, 4.0], min_yes=2)
+    c.answers = [Answer("yes", "", "", 0.9)] * 3
+    assert decide([c], seated_at=lambda t: True) == []
+    assert [v.code for v in decide([c], seated_at=lambda t: False)] == ["X02"]
