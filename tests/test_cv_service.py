@@ -16,11 +16,17 @@ class StubDetector:
     def __init__(self, threshold=0.35):
         self.threshold = threshold
         self.seen = []
+        self.calls = []
 
-    def __call__(self, frames):
+    def __call__(self, frames, batch=16):
         from pipeline.perception import Det
         self.seen.append(self.threshold)
-        return [[Det("person", 0.9, np.array([1, 2, 30, 40], dtype=np.float32))] for _ in frames]
+        self.calls.append(len(frames))
+        if getattr(self, "fail", False):
+            raise RuntimeError("cuda error")
+        scores = getattr(self, "scores", [0.9])
+        return [[Det("person", s, np.array([1, 2, 30, 40], dtype=np.float32)) for s in scores if s > self.threshold]
+                for _ in frames]
 
 
 @pytest.fixture()
@@ -68,10 +74,12 @@ def test_detect_formats(cv):
     assert r.status_code == 200 and r.json()["detections"][0]["label"] == "person"
     r = cv.post("/detect", content=jpeg(), headers={**H, "Content-Type": "image/jpeg"})
     assert r.status_code == 200
-    r = cv.post("/detect", json={"image_base64": base64.b64encode(jpeg()).decode(), "threshold": 0.5}, headers=H)
-    assert r.status_code == 200
-    det = cv.mod.detector
-    assert det.seen[-1] == 0.5 and det.threshold == 0.35  # per-request threshold never leaks into shared state
+    b64 = base64.b64encode(jpeg()).decode()
+    r = cv.post("/detect", json={"image_base64": b64, "threshold": 0.5}, headers=H)
+    assert r.status_code == 200 and len(r.json()["detections"]) == 1       # stub score 0.9 > 0.5
+    r = cv.post("/detect", json={"image_base64": b64, "threshold": 0.95}, headers=H)
+    assert r.status_code == 200 and r.json()["detections"] == []          # filtered per request
+    assert cv.get("/health").json()["batching"]["requests"] >= 4
 
 
 def test_no_url_fetching(cv):
@@ -96,3 +104,79 @@ def test_track_validation(cv):
     assert cv.post("/track", json={**ok, "max_misses": 10**6}, headers=H).status_code == 422
 
 
+
+
+def test_batcher_groups_requests_and_keeps_per_request_thresholds(monkeypatch):
+    import asyncio
+    monkeypatch.setenv("CV_API_KEY", KEY)
+    import service.cv_service as m
+    det = StubDetector(threshold=0.35)
+    det.scores = [0.9, 0.4, 0.32]
+    frame = np.zeros((64, 64, 3), np.uint8)
+
+    async def run():
+        b = m.Batcher(det, max_batch=8, wait_s=0.05, workers=1, floor=0.1)
+        b.start()
+        res = await asyncio.gather(b.detect(frame, 0.5), b.detect(frame, 0.3), b.detect(frame, None))
+        await b.stop()
+        return res, b.stats
+    (r50, r30, rdef), stats = asyncio.run(run())
+    assert det.calls == [3] and det.seen == [0.1]          # one GPU pass for all three, at the score floor
+    assert det.threshold == 0.1                             # fixed at the floor, never swapped per request
+    assert [d.score for d in r50] == [0.9]
+    assert [d.score for d in r30] == [0.9, 0.4, 0.32]
+    assert [d.score for d in rdef] == [0.9, 0.4]            # None = the service default (0.35)
+    assert stats == {"requests": 3, "batches": 1, "largest_batch": 3}
+
+
+def test_batcher_failure_fails_only_that_batch(monkeypatch):
+    import asyncio
+    monkeypatch.setenv("CV_API_KEY", KEY)
+    import service.cv_service as m
+    det = StubDetector()
+    frame = np.zeros((64, 64, 3), np.uint8)
+
+    async def run():
+        b = m.Batcher(det, max_batch=4, wait_s=0.01, workers=2)
+        b.start()
+        det.fail = True
+        with pytest.raises(RuntimeError):
+            await b.detect(frame, None)
+        det.fail = False
+        ok = await b.detect(frame, None)   # the GPU task survived the failure
+        await b.stop()
+        return ok
+    assert len(asyncio.run(run())) == 1
+
+
+def test_batch_size_cap(monkeypatch):
+    import asyncio
+    monkeypatch.setenv("CV_API_KEY", KEY)
+    import service.cv_service as m
+    det = StubDetector()
+    frame = np.zeros((64, 64, 3), np.uint8)
+
+    async def run():
+        b = m.Batcher(det, max_batch=4, wait_s=0.05, workers=2)
+        b.start()
+        await asyncio.gather(*[b.detect(frame, None) for _ in range(10)])
+        await b.stop()
+    asyncio.run(run())
+    assert sum(det.calls) == 10 and max(det.calls) <= 4
+
+
+def test_threshold_below_default_floor_is_raised(monkeypatch):
+    import asyncio
+    monkeypatch.setenv("CV_API_KEY", KEY)
+    import service.cv_service as m
+    det = StubDetector(threshold=0.35)
+    det.scores = [0.9, 0.4, 0.32]
+    frame = np.zeros((64, 64, 3), np.uint8)
+
+    async def run():
+        b = m.Batcher(det, max_batch=8, wait_s=0.01, workers=1)   # floor defaults to the service threshold
+        b.start()
+        r = await b.detect(frame, 0.2)
+        await b.stop()
+        return r
+    assert [d.score for d in asyncio.run(run())] == [0.9, 0.4] and det.seen == [0.35]

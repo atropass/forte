@@ -6,8 +6,10 @@ the team password vault and in the deployment secrets (`VLM_API_BASE`, `VLM_API_
 
 | | VLM server | CV service |
 |---|---|---|
+| RunPod pod (name) | `forte-vllm-dev-3090` | `forte-cv-3070` |
 | Model | `Qwen/Qwen3-VL-4B-Instruct` (Apache-2.0) via vLLM, OpenAI-compatible API | `RT-DETRv2-r18vd` (Apache-2.0) + IoU tracking |
-| GPU | 1× RTX 3090 24 GB | 1× L4 24 GB |
+| GPU | 1× RTX 3090 24 GB, Community Cloud, $0.22/h (host power cap 150 W) | 1× RTX 3070 8 GB, Community Cloud, **$0.13/h** (240 W) |
+| Storage | `/workspace` local volume | `/workspace` 20 GB local volume (venv + weights in `/workspace/hf_home`) |
 | Gateway | nginx `:8000` → vLLM `127.0.0.1:8002` (`configs/nginx.vllm.conf`) | nginx `:8000` → uvicorn `127.0.0.1:8005` (`configs/nginx.cv.conf`) |
 | Processes | supervisord, `configs/supervisord.conf` | supervisord, `configs/supervisord.cv.conf` |
 | Auth | `Authorization: Bearer $VLLM_API_KEY` (enforced by vLLM) | `Authorization: Bearer $CV_API_KEY` (enforced by the service) |
@@ -15,7 +17,37 @@ the team password vault and in the deployment secrets (`VLM_API_BASE`, `VLM_API_
 | Service env | `VLM_API_BASE=https://<vlm-host>/v1`, `VLM_API_KEY` | `DET_API_BASE=https://<cv-host>`, `DET_API_KEY` |
 
 Both gateways are server-to-server only: no CORS, request bodies limited to 20 MB, `/metrics` and API docs not
-exposed, GET/POST only.
+exposed, GET/POST only. The VLM pod also runs a copy of the CV service at `/cv/` (`DET_API_BASE=https://<vlm-host>/cv`),
+usable as a zero-cost fallback if the CV pod is down.
+
+History: the CV service ran on an L4 (Secure Cloud, $0.59/h) until 2026-10-18. It was replaced by the RTX 3070 after
+measuring ~4–5 detector frames per video (L4 idle at 0 % GPU). On the same 24 frames the 3070 matched every detection the
+pipeline uses (score ≥ 0.4: 181/181, max score difference 0.009).
+
+### CV service batching
+Concurrent `/detect` requests are batched into one forward pass (`service/cv_service.py`, `Batcher`):
+
+| Env (supervisord / secrets.env) | Default | Meaning |
+|---|---|---|
+| `CV_MAX_BATCH` | 32 | frames per forward pass |
+| `CV_BATCH_WAIT_MS` | 5 | how long the first request waits for others (20 ms measured no better) |
+| `CV_INFER_WORKERS` | 2 | batches in flight (CPU pre-processing of one overlaps the GPU pass of another; measured +20 % at 8 concurrent requests, no gain at 32) |
+| `CV_THRESHOLD_FLOOR` | `DET_THRESHOLD` (0.35) | score floor the model runs at; each request keeps `score > its threshold` |
+
+Measured on the RTX 3070, 256 frames: no batching 46–52 frames/s at any concurrency; batching 79 frames/s at 32
+concurrent requests (+62 %, latency −40 %). Past that point the CPU-side pre-processing (JPEG decode, resize,
+normalise), not the GPU, is the limit. `GET /health` shows `batching.requests / batches / largest_batch`.
+
+## New CV pod from scratch
+1. RunPod: GPU pod, image `runpod/pytorch:1.0.2-cu1281-torch280-ubuntu2404`, min CUDA 12.8, 20 GB container disk,
+   20 GB **local** volume at `/workspace` (a network volume makes cold starts take minutes), ports `8000/http`,
+   `22/tcp`, SSH key from the account.
+2. `scp scripts/setup_cv_pod.sh root@<pod>:/workspace/ && ssh root@<pod> 'nohup bash /workspace/setup_cv_pod.sh > /workspace/setup.log 2>&1 &'`
+   (pinned CV stack + weights, ~5 min; ends with `SETUP_DONE`).
+3. Copy the code: `tar -cf - service/__init__.py service/cv_service.py pipeline/__init__.py pipeline/perception.py configs/supervisord.cv.conf configs/nginx.cv.conf scripts/start_cv.sh scripts/pod_watchdog.sh | ssh root@<pod> 'cd /workspace/forte && tar --no-same-owner -xf -'`.
+4. `/workspace/secrets.env` with a new `CV_API_KEY` (umask 077), then `scripts/start_cv.sh` (healthy in ~5 s).
+5. Check from outside (`/health`, 401 without/with a wrong key), then set `DET_API_BASE` / `DET_API_KEY` on the
+   analysis service and restart `api` + `worker`.
 
 ## Secrets on a pod
 

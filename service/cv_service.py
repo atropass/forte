@@ -2,21 +2,24 @@
 
 Server-to-server only (called by the analysis workers). Auth: `Authorization: Bearer <CV_API_KEY>`; the service
 refuses to start without a key. Images are accepted as multipart `file`, raw image body, or JSON base64. The service
-never fetches remote URLs. Inference runs in a worker thread (the event loop stays responsive for health checks)
-and is serialized on the single GPU.
+never fetches remote URLs. Decoding and inference run in worker threads (the event loop stays responsive for health
+checks), and inference is batched dynamically: concurrent requests share one forward pass (CV_MAX_BATCH,
+CV_BATCH_WAIT_MS).
 
-Env: CV_API_KEY (required, >= 24 chars), DET_THRESHOLD (0.35), DET_MODEL, MAX_IMAGE_MB (20), MAX_IMAGE_PIXELS (40e6).
+Env: CV_API_KEY (required, >= 24 chars), DET_THRESHOLD (0.35), DET_MODEL, MAX_IMAGE_MB (20), MAX_IMAGE_PIXELS (40e6),
+CV_MAX_BATCH (32), CV_BATCH_WAIT_MS (5), CV_INFER_WORKERS (2), CV_THRESHOLD_FLOOR (= DET_THRESHOLD).
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
+import contextlib
 import hmac
 import io
 import logging
 import os
 import sys
-import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -49,18 +52,101 @@ def _api_key() -> str:
 
 
 detector: Detector | None = None
-_gpu_lock = threading.Lock()
+MAX_BATCH = int(os.getenv("CV_MAX_BATCH", "32"))
+BATCH_WAIT_S = float(os.getenv("CV_BATCH_WAIT_MS", "5")) / 1000
+# batches in flight: while one runs on the GPU the next is pre-processed on the CPU
+INFER_WORKERS = int(os.getenv("CV_INFER_WORKERS", "2"))
+# the model always runs at this score floor; each request then keeps scores > its own threshold. RT-DETR picks its
+# top-k boxes before thresholding, so this equals running at the request's threshold (thresholds below the floor
+# are raised to it).
+THRESHOLD_FLOOR = float(os.getenv("CV_THRESHOLD_FLOOR", os.getenv("DET_THRESHOLD", "0.35")))
+
+
+class Batcher:
+    """Dynamic batching: requests that arrive together run as ONE forward pass on the GPU.
+
+    Each request queues (frame, threshold). Each of `workers` GPU tasks takes the first waiting request, collects
+    whatever else arrives within BATCH_WAIT_S (up to MAX_BATCH frames) and runs the batch; with 2+ workers the CPU
+    pre-processing of one batch overlaps the GPU pass of another. The detector always runs at the score floor and each
+    request keeps detections with score > its own threshold (None = the service default), which equals single-request
+    inference because RT-DETR selects its top-k boxes before thresholding. The detector is never mutated at runtime.
+    """
+
+    def __init__(self, det, max_batch: int = MAX_BATCH, wait_s: float = BATCH_WAIT_S, workers: int = INFER_WORKERS,
+                 floor: float = THRESHOLD_FLOOR):
+        self.det, self.max_batch, self.wait_s, self.workers = det, max_batch, wait_s, max(1, workers)
+        self.default = det.threshold
+        self.floor = min(floor, self.default)
+        det.threshold = self.floor
+        self.queue: asyncio.Queue = asyncio.Queue()
+        self.tasks: list[asyncio.Task] = []
+        self.stats = {"requests": 0, "batches": 0, "largest_batch": 0}
+
+    def start(self):
+        self.tasks = [asyncio.create_task(self._run()) for _ in range(self.workers)]
+
+    async def stop(self):
+        for t in self.tasks:
+            t.cancel()
+        for t in self.tasks:
+            with contextlib.suppress(asyncio.CancelledError):
+                await t
+
+    async def detect(self, frame: np.ndarray, threshold: float | None):
+        fut = asyncio.get_running_loop().create_future()
+        await self.queue.put((frame, threshold, fut))
+        return await fut
+
+    async def _run(self):
+        loop = asyncio.get_running_loop()
+        while True:
+            batch = [await self.queue.get()]
+            deadline = loop.time() + self.wait_s
+            while len(batch) < self.max_batch:
+                timeout = deadline - loop.time()
+                if timeout <= 0:
+                    try:
+                        batch.append(self.queue.get_nowait())
+                        continue
+                    except asyncio.QueueEmpty:
+                        break
+                try:
+                    batch.append(await asyncio.wait_for(self.queue.get(), timeout))
+                except asyncio.TimeoutError:
+                    break
+            thrs = [self.default if t is None else max(t, self.floor) for _, t, _ in batch]
+            try:
+                results = await run_in_threadpool(self.det, [f for f, _, _ in batch], self.max_batch)
+            except Exception as e:  # noqa: BLE001 - fail every request of the batch, keep serving
+                log.exception("batch inference failed")
+                for _, _, fut in batch:
+                    if not fut.done():
+                        fut.set_exception(e)
+                continue
+            self.stats["requests"] += len(batch)
+            self.stats["batches"] += 1
+            self.stats["largest_batch"] = max(self.stats["largest_batch"], len(batch))
+            for (_, _, fut), dets, thr in zip(batch, results, thrs):
+                if not fut.done():
+                    fut.set_result([d for d in dets if d.score > thr])
+
+
+batcher: Batcher | None = None
 
 
 @asynccontextmanager
 async def lifespan(_app):
-    global detector
+    global detector, batcher
     _api_key()
     log.info("loading RT-DETRv2")
     detector = Detector(threshold=float(os.getenv("DET_THRESHOLD", "0.35")))
-    detector(np.full((640, 640, 3), 128, dtype=np.uint8)[None])  # warm-up
-    log.info("RT-DETRv2 ready on %s (half=%s)", detector.device, detector.half)
+    detector([np.full((640, 640, 3), 128, dtype=np.uint8)] * min(MAX_BATCH, 8))  # warm-up incl. a batched pass
+    log.info("RT-DETRv2 ready on %s (half=%s), max batch %d, wait %.0f ms, %d batches in flight", detector.device,
+             detector.half, MAX_BATCH, BATCH_WAIT_S * 1000, INFER_WORKERS)
+    batcher = Batcher(detector)
+    batcher.start()
     yield
+    await batcher.stop()
 
 
 app = FastAPI(title="ForteVision CV Service", version="2.0.0", lifespan=lifespan,
@@ -113,7 +199,8 @@ def root():
 @app.get("/health")
 @app.get("/cv/health")
 def health():
-    return {"status": "ok", "ready": detector is not None, "classes": list(COCO_KEEP)}
+    return {"status": "ok", "ready": detector is not None and batcher is not None, "classes": list(COCO_KEEP),
+            "batching": {"max_batch": MAX_BATCH, "wait_ms": BATCH_WAIT_S * 1000, "workers": INFER_WORKERS, **(batcher.stats if batcher else {})}}
 
 
 def _decode(content: bytes) -> Image.Image:
@@ -140,7 +227,7 @@ async def _parse(request: Request) -> tuple[Image.Image, float | None, list[str]
         upload = form.get("file") or form.get("image")
         if not hasattr(upload, "read"):
             raise HTTPException(status_code=400, detail="multipart field 'file' is required")
-        img = _decode(await upload.read(MAX_IMAGE_BYTES + 1))
+        img = await run_in_threadpool(_decode, await upload.read(MAX_IMAGE_BYTES + 1))
         if form.get("threshold"):
             try:
                 threshold = float(form.get("threshold"))
@@ -159,12 +246,12 @@ async def _parse(request: Request) -> tuple[Image.Image, float | None, list[str]
         if "," in raw[:100]:
             raw = raw.split(",", 1)[1]
         try:
-            img = _decode(base64.b64decode(raw, validate=True))
+            img = await run_in_threadpool(_decode, base64.b64decode(raw, validate=True))
         except (binascii.Error, ValueError):
             raise HTTPException(status_code=400, detail="invalid base64") from None
         threshold, classes = body.threshold, body.classes
     elif ctype.startswith("image/"):
-        img = _decode(await request.body())
+        img = await run_in_threadpool(_decode, await request.body())
     else:
         raise HTTPException(status_code=415, detail="send multipart 'file', an image body, or JSON image_base64")
     if threshold is not None and not 0.0 <= threshold <= 1.0:
@@ -175,17 +262,6 @@ async def _parse(request: Request) -> tuple[Image.Image, float | None, list[str]
     return img, threshold, classes
 
 
-def _infer(frame: np.ndarray, threshold: float | None):
-    with _gpu_lock:  # one GPU: serialize; the per-request threshold is applied only while holding the lock
-        base = detector.threshold
-        try:
-            if threshold is not None:
-                detector.threshold = threshold
-            return detector(frame[None])[0]
-        finally:
-            detector.threshold = base
-
-
 @app.post("/cv/detect", response_model=DetectionResponse)
 @app.post("/detect", response_model=DetectionResponse)
 async def detect_image(request: Request, authorization: str | None = Header(None)):
@@ -194,7 +270,7 @@ async def detect_image(request: Request, authorization: str | None = Header(None
         raise HTTPException(status_code=503, detail="detector not ready")
     t0 = time.time()
     img, threshold, classes = await _parse(request)
-    results = await run_in_threadpool(_infer, np.asarray(img), threshold)
+    results = await batcher.detect(np.asarray(img), threshold)
     if classes:
         allowed = set(classes)
         results = [d for d in results if d.label in allowed]
