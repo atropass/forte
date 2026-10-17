@@ -16,7 +16,7 @@ help:             ## list commands
 
 setup:            ## once: Python venv + UI dependencies (+ detector weights)
 	test -d .venv || python3 -m venv .venv
-	$(PY) -m pip install -q -r requirements.txt
+	$(PY) -m pip install -q -r requirements-dev.txt
 	cd forte-vision-ai-development && pnpm install
 	HF_HUB_OFFLINE=0 $(PY) -c "from huggingface_hub import snapshot_download as d; d('PekingU/rtdetr_v2_r18vd')"
 

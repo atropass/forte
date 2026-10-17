@@ -1,2 +1,2 @@
-# Kept for compatibility: everything is in requirements.txt
--r requirements.txt
+# Kept for compatibility
+-r requirements-dev.txt
