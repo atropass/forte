@@ -224,8 +224,10 @@ def events_from_state(samples: list[StateSample], duration: float, det_ts: np.nd
     # visitor at the desk while the cashier's seat is empty, for >= 2 consecutive samples (V02)
     k = 0
     while k < n - 1:
-        if samples[k].visitor and not samples[k].seated and samples[k + 1].visitor and not samples[k + 1].seated \
-                and occ[k] >= 1:
+        # the cashier has LEFT THE ROOM while a visitor stays: only the visitor is inside (count 1), visitor at
+        # the desk and the cashier's seat empty, on 2 consecutive samples. "Not seated" alone is unreliable when
+        # the cashier sits with her back to the camera (X-18).
+        if all(samples[x].visitor and not samples[x].seated and occ[x] == 1 for x in (k, k + 1)):
             events.append(Event("cashier_absent_with_visitor", ts[k]))
             while k < n and samples[k].visitor and not samples[k].seated:
                 k += 1

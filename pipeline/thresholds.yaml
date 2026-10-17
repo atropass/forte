@@ -8,5 +8,5 @@ handover_act: 0.35
 handover_id: 0.5
 laptop_on: 0.55
 money_on_desk: 0.5
-personal_items: 0.55
+personal_items: 0.9
 safe_open: 0.15

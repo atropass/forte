@@ -21,7 +21,12 @@ from .vlm import THRESHOLDS, threshold
 
 RULES = yaml.safe_load((Path(__file__).parent / "rules.yaml").read_text())["types"]
 
-PERIODIC_STEP = 5.0  # seconds between periodic workplace checks
+PERIODIC_STEP = 5.0  # seconds between periodic workplace checks (videos > 40 s)
+
+
+def periodic_step(duration: float) -> float:
+    """Short clips need denser sampling, otherwise "2 consecutive positive samples" cannot happen (X-20, 11.6 s)."""
+    return 2.5 if duration <= 40 else PERIODIC_STEP
 
 # for cashier_left triggers, check frames are taken relative to the moment the room is empty (the cashier
 # is out of the picture), while the timecode stays at the leave start
@@ -71,10 +76,11 @@ def expand_triggers(events: list[Event], duration: float) -> dict[str, list[floa
             if n_visitors >= 1:
                 trig["visitor_arrived_after_visitor"].append(e.t)
             n_visitors += 1
+    step = periodic_step(duration)
     t = 1.0
     while t < duration - 1.0:
         trig["periodic"].append(t)
-        t += PERIODIC_STEP
+        t += step
     return trig
 
 
@@ -210,12 +216,14 @@ def decide(checks: list[Check], periodic_min_consecutive: int = 2, seated_at=Non
             v = _mk(c, rule, tc, ev_times, mean, "timeline+vlm")
             v.extra["p_yes"] = [round(_p(a), 2) for a in c.answers]
             out.append(v)
-    # periodic rules need >= N consecutive positive samples (independent frames PERIODIC_STEP apart)
+    # periodic rules need >= N consecutive positive samples (independent frames `step` apart)
+    all_periodic = sorted({c.trigger_t for c in checks if c.periodic})
+    step = (all_periodic[1] - all_periodic[0]) if len(all_periodic) > 1 else PERIODIC_STEP
     for rid, hits in periodic_hits.items():
         hits.sort(key=lambda h: h[0].trigger_t)
         run = [hits[0]]
         for h in hits[1:]:
-            if abs(h[0].trigger_t - run[-1][0].trigger_t - PERIODIC_STEP) < 0.5:
+            if abs(h[0].trigger_t - run[-1][0].trigger_t - step) < 0.5:
                 run.append(h)
             else:
                 run = [h]

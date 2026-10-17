@@ -40,11 +40,13 @@ questions:
     scope: crop:door
     text: Is the glass entrance door of this room standing open (not closed in its frame)?
   personal_items:
-    threshold: 0.55
+    threshold: 0.65
     scope: crop:desk
     text: >-
-      Are there personal belongings on the desk — handbag, purse, jacket, food, drink cup or bottle?
-      Work equipment (laptop, phone handset, counting machine, papers, cash) does not count.
+      Answer yes only if (a) a personal handbag, purse, backpack, jacket or coat is LYING ON the desk, or
+      (b) the cashier is eating or drinking at the desk right now. Answer no for: a cup or bottle just
+      standing there, a green cash-collection bag or sack (even if held over the desk), banknotes, scissors,
+      papers, pens, a notebook or tablet, laptop, phone handset, counting machine, or anything held in hands for work.
   cashier_at_desk:
     scope: full
     text: Answer yes if any person is sitting or standing at the cashier working place behind the desk, otherwise no.
