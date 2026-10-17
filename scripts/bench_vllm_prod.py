@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import asyncio
 import json
 import time
@@ -66,7 +67,7 @@ async def run_single_user(user_id: int, base_url: str, api_key: str, model: str)
 async def main():
     parser = argparse.ArgumentParser(description="Benchmark concurrent vLLM production service.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000/v1", help="Base URL of vLLM /v1 endpoint")
-    parser.add_argument("--api-key", default="fv-prod-secret-forte-2026", help="Bearer API key")
+    parser.add_argument("--api-key", default=os.getenv("VLM_API_KEY", ""), help="Bearer API key (default: env VLM_API_KEY)")
     parser.add_argument("--model", default="Qwen/Qwen3-VL-4B-Instruct", help="Model ID")
     parser.add_argument("--concurrency", type=int, default=3, help="Simulated concurrent users")
     args = parser.parse_args()

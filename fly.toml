@@ -1,15 +1,29 @@
-# Secrets (not in this file): API_KEY, VLM_API_BASE, VLM_API_KEY  ->  flyctl secrets set ...
+# Fly.io is one possible host. It runs the image in single-host mode ("allinone": Redis + API + workers under
+# supervisord, state on the /data volume). For multi-host deployments use docker-compose.yml / deploy/k8s.
+#
+# Secrets (never in this file):
+#   fly secrets set -a forte-vision VLM_API_BASE=... VLM_API_KEY=... DET_API_BASE=... DET_API_KEY=... METRICS_TOKEN=...
+# Jury key and accounts:  fly ssh console -a forte-vision -C "entrypoint admin create-api-key --name jury"
 app = "forte-vision"
 primary_region = "fra"
+kill_signal = "SIGTERM"
+kill_timeout = 300   # running jobs finish (or hit JOB_TIMEOUT_S) before the machine stops
 
 [build]
-  dockerfile = "docker/fly.Dockerfile"
+  dockerfile = "docker/service.Dockerfile"
+
+[processes]
+  app = "allinone"
 
 [env]
+  WORKER_COUNT = "4"
+  WEB_CONCURRENCY = "2"
   VLM_CONCURRENCY = "16"
-  JOB_TIMEOUT_S = "900"
-  # RT-DETRv2 on the team's CV pod (token = VLM_API_KEY); unset -> detector runs on the Fly CPU
-  DET_API_BASE = "https://ydfg26qe73blrr-8000.proxy.runpod.net"
+  DET_CONCURRENCY = "8"
+  JOB_TIMEOUT_S = "290"
+  MAX_UPLOAD_MB = "100"
+  STORAGE_BACKEND = "fs"
+  PUBLIC_ORIGIN = "https://forte-vision.fly.dev"
 
 [[mounts]]
   source = "forte_data"
@@ -18,17 +32,23 @@ primary_region = "fra"
 [http_service]
   internal_port = 8000
   force_https = true
-  auto_stop_machines = "off"   # jobs run in-process; a stopped machine would kill a running analysis
+  auto_stop_machines = "off"   # jobs run on this machine; a stopped machine would kill a running analysis
   auto_start_machines = true
   min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
 
   [[http_service.checks]]
     method = "GET"
     path = "/healthz"
-    interval = "30s"
+    interval = "15s"
     timeout = "5s"
-    grace_period = "120s"
+    grace_period = "30s"
 
 [[vm]]
-  size = "shared-cpu-2x"
-  memory = "4096mb"
+  size = "shared-cpu-4x"
+  memory = "8192mb"

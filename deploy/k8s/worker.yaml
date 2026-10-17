@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: forte-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: forte-worker }
+  template:
+    metadata:
+      labels: { app: forte-worker }
+    spec:
+      terminationGracePeriodSeconds: 330   # running analyses finish during rollouts
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: worker
+          image: forte-vision
+          args: ["worker"]
+          envFrom: [{ secretRef: { name: forte-vision } }]
+          env:
+            - { name: TMPDIR, value: /tmp }
+            - { name: WORKER_COUNT, value: "2" }
+          resources:
+            requests: { cpu: "1", memory: 2Gi }
+            limits: { cpu: "2", memory: 4Gi }
+          livenessProbe:
+            exec: { command: ["python", "-m", "service.worker_main", "check"] }
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 4
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 2Gi }

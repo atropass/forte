@@ -26,3 +26,9 @@ forte-vision-ai-development/.next/
 forte-vision-ai-development/out/
 data_service_preview/
 reports/report_assets/
+.claude/
+*.tsbuildinfo
+.env.*
+!.env.example
+secrets.env
+.pytest_cache/

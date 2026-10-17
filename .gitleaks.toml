@@ -1,0 +1,16 @@
+# Secret scanning (CI job "secrets"). Default rules + project-specific token formats.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "forte-gateway-token"
+description = "ForteVision GPU gateway token (old fixed format)"
+regex = '''fv-(prod|dev)-secret[-\w]*'''
+
+[[rules]]
+id = "forte-api-key"
+description = "ForteVision API key issued by service.admin"
+regex = '''\bfv_[A-Za-z0-9_-]{40,}\b'''
+
+[allowlist]
+paths = ['''forte-vision-ai-development/pnpm-lock\.yaml''', '''reports/''']

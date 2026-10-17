@@ -1,263 +1,92 @@
-# GPU Server & vLLM Access Guide
+# GPU servers (vLLM + CV service)
 
-This guide details the deployment, architecture, endpoints, and team access for the parallel GPU cluster running on RunPod.
+The analysis workers call two GPU services over HTTPS. Both run on team-controlled GPU pods (RunPod today; any
+GPU host with Docker/NVIDIA works). **No URLs, tokens or SSH endpoints are kept in this repository**: they live in
+the team password vault and in the deployment secrets (`VLM_API_BASE`, `VLM_API_KEY`, `DET_API_BASE`, `DET_API_KEY`).
 
----
+| | VLM server | CV service |
+|---|---|---|
+| Model | `Qwen/Qwen3-VL-4B-Instruct` (Apache-2.0) via vLLM, OpenAI-compatible API | `RT-DETRv2-r18vd` (Apache-2.0) + IoU tracking |
+| GPU | 1× RTX 3090 24 GB | 1× L4 24 GB |
+| Gateway | nginx `:8000` → vLLM `127.0.0.1:8002` (`configs/nginx.vllm.conf`) | nginx `:8000` → uvicorn `127.0.0.1:8005` (`configs/nginx.cv.conf`) |
+| Processes | supervisord, `configs/supervisord.conf` | supervisord, `configs/supervisord.cv.conf` |
+| Auth | `Authorization: Bearer $VLLM_API_KEY` (enforced by vLLM) | `Authorization: Bearer $CV_API_KEY` (enforced by the service) |
+| Health | `GET /health` | `GET /health` |
+| Service env | `VLM_API_BASE=https://<vlm-host>/v1`, `VLM_API_KEY` | `DET_API_BASE=https://<cv-host>`, `DET_API_KEY` |
 
-## 1. Multi-Server Cluster Overview
+Both gateways are server-to-server only: no CORS, request bodies limited to 20 MB, `/metrics` and API docs not
+exposed, GET/POST only.
 
-Three pods are deployed and running simultaneously:
+## Secrets on a pod
 
-| Feature | Pod 1: Fast Compliance VLM | Pod 2: High-Capacity Reasoning VLM | Pod 3: Dedicated Vision Microservice |
-|---|---|---|---|
-| **Pod ID** | `tw6jhre43eeunm` | `7pd5og5br2oe9c` | `ydfg26qe73blrr` |
-| **GPU** | 1x **NVIDIA GeForce RTX 3090** (24 GB) | 1x **NVIDIA A100-SXM4-80GB** (80 GB) | 1x **NVIDIA L4** (24 GB, Ada Lovelace) |
-| **Cloud Tier** | Community Cloud | Community Cloud | Secure Cloud (`EU-RO-1`) |
-| **Hourly Cost** | **$0.22 / hour** | **$1.39 / hour** | **$0.59 / hour** |
-| **Active Model** | **`Qwen/Qwen3-VL-4B-Instruct`** (or 2B via switcher) | **`Qwen/Qwen3.8-27B`** (Apache-2.0, BF16 native) | **`RT-DETRv2-r18vd`** + ByteTrack Tracking |
-| **Base URL** | `https://tw6jhre43eeunm-8000.proxy.runpod.net/v1` | `https://7pd5og5br2oe9c-8000.proxy.runpod.net/v1` | `https://ydfg26qe73blrr-8000.proxy.runpod.net` |
-| **Bearer Token** | `fv-prod-secret-forte-2026` | `fv-prod-secret-forte-2026` | `fv-prod-secret-forte-2026` |
-| **Direct SSH** | `ssh -i ~/.ssh/id_ed25519 -p 42346 root@80.15.7.37` | `ssh -i ~/.ssh/id_ed25519 -p 20618 root@216.249.100.66` | `ssh -i ~/.ssh/id_ed25519 -p 13636 root@213.173.105.19` |
-| **Primary Use** | Fast video compliance checks & dev testing | Heavy reasoning, deep visual verification, complex tasks | Real-time object detection (35ms), person tracking & trajectories |
-
----
-
-## 2. Public API Endpoints
-
-### Pod 1 — `Qwen3-VL-4B` / `Qwen2-VL-2B` (OpenAI-Compatible):
-- **Base URL**: `https://tw6jhre43eeunm-8000.proxy.runpod.net/v1`
-- **Health Check**: `https://tw6jhre43eeunm-8000.proxy.runpod.net/health`
-- **Model List**: `https://tw6jhre43eeunm-8000.proxy.runpod.net/v1/models`
-- **Completions**: `https://tw6jhre43eeunm-8000.proxy.runpod.net/v1/chat/completions`
-
-### Pod 2 — `Qwen3.8-27B` (A100 80GB, OpenAI-Compatible):
-- **Base URL**: `https://7pd5og5br2oe9c-8000.proxy.runpod.net/v1`
-- **Health Check**: `https://7pd5og5br2oe9c-8000.proxy.runpod.net/health`
-- **Model List**: `https://7pd5og5br2oe9c-8000.proxy.runpod.net/v1/models`
-- **Completions**: `https://7pd5og5br2oe9c-8000.proxy.runpod.net/v1/chat/completions`
-
-### Pod 3 — Dedicated Computer Vision Microservice (`forte-cv-vision-pod`):
-- **Base URL**: `https://ydfg26qe73blrr-8000.proxy.runpod.net`
-- **Service Info**: `GET /`
-- **Health Check**: `GET /health` or `GET /cv/health`
-- **Interactive Swagger Docs**: `GET /docs`
-- **OpenAPI Schema**: `GET /openapi.json`
-- **Object Detection**: `POST /detect` or `POST /cv/detect`
-- **Multi-Object Tracking**: `POST /track` or `POST /cv/track`
-
----
-
-## 3. Computer Vision API Instructions
-
-The CV service on Pod 3 runs real-time **RT-DETRv2** with half-precision (FP16) on the NVIDIA L4 GPU (~35–100ms per frame). Supported COCO object classes: `person`, `laptop`, `bottle`, `cup`, `cell phone`, `suitcase`, `book`, `handbag`, `backpack`.
-
-### 3.1 Object Detection (`POST /detect`)
-
-The endpoint accepts input in **three formats**:
-1. Multipart file upload (`file=@image.jpg`)
-2. JSON with Base64-encoded image (`{"image_base64": "..."}`)
-3. JSON with remote image URL (`{"url": "https://..."}`)
-
-Optional parameters:
-- `threshold` (float, e.g. `0.3`): minimum confidence score
-- `classes` (list of str or comma-separated): filter specific classes (e.g. `["person", "laptop"]`)
-
-#### Option A: Multipart File Upload
-```bash
-curl -s -X POST https://ydfg26qe73blrr-8000.proxy.runpod.net/detect \
-  -H "Authorization: Bearer fv-prod-secret-forte-2026" \
-  -F "file=@/path/to/frame.jpg"
-```
-
-#### Option B: Remote Image URL
-```bash
-curl -s -X POST https://ydfg26qe73blrr-8000.proxy.runpod.net/detect \
-  -H "Authorization: Bearer fv-prod-secret-forte-2026" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=640&q=80",
-    "threshold": 0.4
-  }'
-```
-
-#### Option C: Base64 JSON
-```bash
-IMAGE_B64=$(base64 -w 0 /path/to/frame.jpg)
-curl -s -X POST https://ydfg26qe73blrr-8000.proxy.runpod.net/detect \
-  -H "Authorization: Bearer fv-prod-secret-forte-2026" \
-  -H "Content-Type: application/json" \
-  -d "{\"image_base64\": \"$IMAGE_B64\"}"
-```
-
-**Response Format**:
-```json
-{
-  "elapsed_ms": 35.04,
-  "detections": [
-    {
-      "label": "person",
-      "confidence": 0.9678,
-      "box": [0.62, 120.56, 637.5, 948.0]
-    }
-  ]
-}
-```
-*Note: `box` coordinates are `[x1, y1, x2, y2]` in image pixels.*
-
----
-
-### 3.2 Multi-Object Tracking (`POST /track`)
-
-Tracks bounding box associations across sequential video frames using ByteTrack-style greedy IoU matching (<0.1 ms latency).
+Each pod keeps its keys in `/workspace/secrets.env` (owner root, `chmod 600`, outside the git checkout):
 
 ```bash
-curl -s -X POST https://ydfg26qe73blrr-8000.proxy.runpod.net/track \
-  -H "Authorization: Bearer fv-prod-secret-forte-2026" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "frames": [
-      {
-        "frame_index": 0,
-        "person_boxes": [[100, 100, 200, 200]]
-      },
-      {
-        "frame_index": 1,
-        "person_boxes": [[105, 102, 204, 202]]
-      },
-      {
-        "frame_index": 2,
-        "person_boxes": [[110, 105, 208, 205]]
-      }
-    ],
-    "iou_threshold": 0.25,
-    "max_misses": 4
-  }'
+# VLM pod
+VLLM_API_KEY=<random, >= 32 chars>
+CV_API_KEY=<random, >= 32 chars>     # only if the CV service also runs on this pod
+# CV pod
+CV_API_KEY=<random, >= 32 chars>
 ```
 
-**Response Format**:
-```json
-{
-  "elapsed_ms": 0.09,
-  "total_tracks": 1,
-  "tracks": [
-    {
-      "track_id": 0,
-      "first_frame": 0,
-      "last_frame": 2,
-      "trajectory": {
-        "0": [100.0, 100.0, 200.0, 200.0],
-        "1": [105.0, 102.0, 204.0, 202.0],
-        "2": [110.0, 105.0, 208.0, 205.0]
-      }
-    }
-  ]
-}
-```
+Generate keys with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`. vLLM reads `VLLM_API_KEY`
+from the environment, so the key never appears on a command line (`ps`). Use different keys for the two pods.
 
----
-
-## 4. VLM `curl` Examples
-
-### Query Pod 1 (`Qwen3-VL-4B-Instruct`):
-```bash
-curl -s https://tw6jhre43eeunm-8000.proxy.runpod.net/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer fv-prod-secret-forte-2026" \
-  -d '{
-    "model": "Qwen/Qwen3-VL-4B-Instruct",
-    "messages": [
-      {"role": "user", "content": "Explain bank safe compliance in one sentence."}
-    ],
-    "max_tokens": 50
-  }'
-```
-
-### Query Pod 2 (`Qwen3.8-27B` on A100):
-```bash
-curl -s https://7pd5og5br2oe9c-8000.proxy.runpod.net/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer fv-prod-secret-forte-2026" \
-  -d '{
-    "model": "Qwen/Qwen3.8-27B",
-    "messages": [
-      {"role": "user", "content": "What are your primary multimodal capabilities?"}
-    ],
-    "max_tokens": 60
-  }'
-```
-
----
-
-## 5. Team Python SDK Integration
-
-Using `sdk/client.py`:
-
-```python
-from sdk.client import VLLMClient, CVClient
-
-# 1. Computer Vision Service (Pod 3: NVIDIA L4)
-cv = CVClient(
-    base_url="https://ydfg26qe73blrr-8000.proxy.runpod.net",
-    api_key="fv-prod-secret-forte-2026"
-)
-
-# Object Detection (local file, URL, or base64)
-result = cv.detect("frame_001.jpg", threshold=0.35)
-print(f"Inference: {result['elapsed_ms']} ms | Detections: {len(result['detections'])}")
-
-# Multi-frame IoU Tracking
-tracks = cv.track(frames=[
-    {"frame_index": 0, "person_boxes": [[100, 100, 200, 200]]},
-    {"frame_index": 1, "person_boxes": [[105, 102, 204, 202]]}
-])
-print("Tracks found:", tracks["total_tracks"])
-
-# 2. Fast VLM Compliance (Pod 1: RTX 3090)
-vlm_fast = VLLMClient(
-    base_url="https://tw6jhre43eeunm-8000.proxy.runpod.net/v1",
-    model="Qwen/Qwen3-VL-4B-Instruct",
-    api_key="fv-prod-secret-forte-2026"
-)
-print("VLM Fast:", vlm_fast.chat("Is the safe door open?"))
-
-# 3. High-Capacity Reasoning (Pod 2: A100 80GB)
-vlm_heavy = VLLMClient(
-    base_url="https://7pd5og5br2oe9c-8000.proxy.runpod.net/v1",
-    model="Qwen/Qwen3.8-27B",
-    api_key="fv-prod-secret-forte-2026"
-)
-print("VLM Heavy:", vlm_heavy.chat("Perform legal reasoning on article 24 clause 3."))
-```
-
----
-
-## 6. Model Switching on Pod 1
-
-On Pod 1, switch between lightweight dev model and production accuracy model:
+## Redeploy / rotate keys
 
 ```bash
-# Switch to lightweight dev model (Qwen2-VL-2B, ~4.5 GB VRAM, 150+ tok/s):
-ssh -i ~/.ssh/id_ed25519 -p 42346 root@80.15.7.37 "/workspace/forte/scripts/switch_model.sh dev"
+# on the VLM pod
+cd /workspace/forte && git pull
+$EDITOR /workspace/secrets.env                 # new VLLM_API_KEY
+scripts/setup_gpu_prod.sh                      # restarts vLLM + gateway, waits for /health
 
-# Switch back to production model (Qwen3-VL-4B, ~8.5 GB VRAM):
-ssh -i ~/.ssh/id_ed25519 -p 42346 root@80.15.7.37 "/workspace/forte/scripts/switch_model.sh prod"
+# on the CV pod
+cd /workspace/forte && git pull
+$EDITOR /workspace/secrets.env                 # new CV_API_KEY
+scripts/start_cv.sh                            # restarts the CV service + gateway, waits for /health
 ```
 
----
+Then update the analysis service secrets and restart the workers, e.g. on Fly.io:
 
-## 7. Process Monitoring & Diagnostics
-
-### Pod 1 (RTX 3090 - Fast VLM):
 ```bash
-ssh -i ~/.ssh/id_ed25519 -p 42346 root@80.15.7.37 "supervisorctl -c /workspace/forte/configs/supervisord.conf status; nvidia-smi"
+fly secrets set -a forte-vision VLM_API_KEY=<new vllm key> DET_API_KEY=<new cv key>
 ```
 
-### Pod 2 (A100 80GB - Heavy VLM):
+Check from the service host:
+
 ```bash
-ssh -i ~/.ssh/id_ed25519 -p 20618 root@216.249.100.66 "supervisorctl -c /workspace/forte/configs/supervisord.conf status; nvidia-smi"
+curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $VLM_API_KEY" "$VLM_API_BASE/models"   # 200
+curl -s -o /dev/null -w '%{http_code}\n' "$VLM_API_BASE/models"                                           # 401
+curl -s "$DET_API_BASE/health"                                                                             # {"status":"ok","ready":true,...}
 ```
 
-### Pod 3 (NVIDIA L4 - Dedicated CV Microservice):
+## CV service API
+
+`POST /detect` (also `/cv/detect`) accepts one image as multipart `file`, a raw `image/jpeg|png|webp` body, or JSON
+`{"image_base64": "...", "threshold": 0.4, "classes": ["person"]}`. Remote URLs are not accepted.
+
 ```bash
-ssh -i ~/.ssh/id_ed25519 -p 13636 root@213.173.105.19 "supervisorctl -c /workspace/forte/configs/supervisord.cv.conf status; nvidia-smi"
+curl -s -X POST "$DET_API_BASE/detect" -H "Authorization: Bearer $DET_API_KEY" -F "file=@frame.jpg"
+# {"elapsed_ms": 35.0, "detections": [{"label": "person", "confidence": 0.97, "box": [x1, y1, x2, y2]}]}
+```
+
+`POST /track` (also `/cv/track`): IoU tracking over per-frame person boxes,
+`{"frames": [{"frame_index": 0, "person_boxes": [[x1, y1, x2, y2]]}], "iou_threshold": 0.25, "max_misses": 4}`.
+
+## Model switching on the VLM pod
+
+```bash
+scripts/switch_model.sh dev    # Qwen2-VL-2B, development only
+scripts/switch_model.sh prod   # Qwen3-VL-4B, the model the thresholds are calibrated for
+```
+
+`/readyz` of the analysis service reports a warning when the served model differs from the calibrated one.
+
+## Diagnostics on a pod
+
+```bash
+supervisorctl -c /workspace/forte/configs/supervisord.conf status      # VLM pod
+supervisorctl -c /workspace/forte/configs/supervisord.cv.conf status   # CV pod
+tail -f /workspace/logs/vllm_err.log /workspace/logs/cv_service_err.log
+nvidia-smi
 ```
