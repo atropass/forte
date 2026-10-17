@@ -10,7 +10,7 @@ PORT ?= 8000
 export HF_HUB_OFFLINE ?= 1
 export CORS_ORIGINS ?= http://localhost:3000
 
-.PHONY: help setup ui run dev check-vlm calibrate eval eval-report eval-api audit feasibility bench test weights serve
+.PHONY: help setup ui run dev check-vlm calibrate eval eval-report eval-api audit feasibility bench test weights serve deploy
 help:             ## list commands
 	@grep -E '^[a-z-]+:.*##' Makefile | sed 's/:.*##/\t/'
 
@@ -62,3 +62,6 @@ weights:          ## GPU-server Docker deployment: download weights to ./weights
 
 serve:            ## GPU-server Docker deployment (in-container vLLM)
 	docker compose up -d --build
+
+deploy:           ## deploy committed HEAD to Fly.io (forte-vision.fly.dev)
+	scripts/deploy_fly.sh
