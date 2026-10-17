@@ -1,6 +1,6 @@
 """Load test of the public API, the way the jury uses it: N videos submitted at once, then polled.
 
-    python scripts/loadtest.py --url https://forte-vision.fly.dev --key "$FV_API_KEY" \
+    python scripts/loadtest.py --url https://forte.example.kz --key "$FV_API_KEY" \
         --videos open/ --burst 10 [--unique] [--out reports/loadtest.md]
 
 Per job it reports the time waiting for a worker, the processing time and the end-to-end time seen by the client,

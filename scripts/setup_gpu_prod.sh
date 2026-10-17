@@ -11,12 +11,6 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
 
 mkdir -p /workspace/logs /workspace/hf_home /workspace/.cache/vllm /workspace/.cache/torch_extensions
 
-# Kill any existing standalone instances
-pkill -f "vllm.entrypoints" || true
-pkill -f "supervisord" || true
-pkill -f "nginx: master" || true
-sleep 2
-
 # Secrets from /workspace/secrets.env (chmod 600, never committed): VLLM_API_KEY=..., CV_API_KEY=...
 SECRETS="${SECRETS_FILE:-/workspace/secrets.env}"
 if [[ ! -f "$SECRETS" ]]; then
@@ -34,13 +28,27 @@ if [[ -z "${VLLM_API_KEY:-}" || ${#VLLM_API_KEY} -lt 24 ]]; then
 fi
 echo "==> API key loaded from $SECRETS"
 
+# Stop the running stack and wait until it is really gone (vLLM needs up to stopwaitsecs to exit; starting a new
+# supervisord while the old one still holds its socket fails)
+CONF=/workspace/forte/configs/supervisord.conf
+supervisorctl -c "$CONF" shutdown >/dev/null 2>&1 || true
+pkill -f "vllm.entrypoints" || true
+pkill -f "nginx: master" || true
+for _ in $(seq 1 60); do
+  pgrep -f "supervisord -c" >/dev/null || pgrep -f "vllm.entrypoints" >/dev/null || break
+  sleep 1
+done
+pkill -9 -f "supervisord -c" || true
+pkill -9 -f "vllm.entrypoints" || true
+rm -f /tmp/supervisor.sock /tmp/supervisord.pid
+
 # Start supervisord daemon
 echo "==> Starting supervisord..."
 supervisord -c /workspace/forte/configs/supervisord.conf
 
 echo "==> Waiting for vLLM & Nginx to become healthy on port 8000..."
 READY=0
-for i in $(seq 1 60); do
+for i in $(seq 1 300); do
   if curl -sf http://127.0.0.1:8000/health >/dev/null 2>&1; then
     READY=1
     break

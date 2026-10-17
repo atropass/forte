@@ -4,10 +4,11 @@ The service needs only standard components; nothing is tied to a cloud vendor.
 
 | Component | Default (docker-compose.yml) | In a bank |
 |---|---|---|
-| API | `forte-vision` image, role `api` (stateless, port 8000) | behind the internal load balancer / reverse proxy with TLS, any number of instances |
-| Workers | same image, role `worker` (`WORKER_COUNT` processes per container) | scaled by processes or containers |
+| Frontend | `forte-frontend` image: nginx (non-root, port 8080) with the static UI, proxies `/api` to the API | the bank's ingress / reverse proxy with TLS in front (or replace it: serve the static files and proxy `/api`) |
+| API | `forte-backend` image, role `api` (stateless, port 8000, internal only) | behind the internal load balancer / reverse proxy with TLS, any number of instances |
+| Workers | `forte-backend` image, role `worker` (`WORKER_COUNT` processes per container) | scaled by processes or containers |
 | Queue + state | Redis 7 with AOF | managed Redis / Sentinel (`REDIS_URL`, `rediss://` supported) |
-| Object storage | MinIO | Ceph RGW / any S3 API (`S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_SSE`) |
+| Object storage | `data` volume shared by api and worker (`STORAGE_BACKEND=fs`) | Ceph RGW / any S3 API (`S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_SSE`) |
 | VLM | vLLM + Qwen3-VL-4B on a GPU server | on-prem GPU server (24 GB+), `VLM_API_BASE`, `VLM_API_KEY` |
 | Detector | CV service (RT-DETRv2) on a GPU server | same or another GPU server, `DET_API_BASE`, `DET_API_KEY` |
 

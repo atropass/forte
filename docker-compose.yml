@@ -1,5 +1,6 @@
-# Production reference stack (any Docker host):
-#   api ×1 (WEB_CONCURRENCY processes)  +  worker (WORKER_COUNT processes)  +  Redis (AOF)  +  MinIO (S3 API)
+# Production stack (any Docker host):
+#   frontend (nginx :8080, the only public port: static UI + /api proxy)
+#   api, worker (backend image, sharing the `data` volume for videos/results)  +  Redis (AOF)
 # The GPU models run on separate GPU servers (VLM_API_BASE / DET_API_BASE in .env).
 #
 #   cp .env.example .env && $EDITOR .env
@@ -7,49 +8,55 @@
 #   docker compose run --rm init admin create-api-key --name jury
 #   docker compose run --rm init admin create-user jury
 #
-# To use an existing Redis / S3 (Ceph, AWS, ...), remove the redis/minio services and set REDIS_URL / S3_* in .env.
-x-service: &service
-  image: forte-vision:${IMAGE_TAG:-latest}
-  build: { context: ., dockerfile: docker/service.Dockerfile }
+# TLS: put a reverse proxy in front of :8080, or `docker compose --profile tls up -d` (Caddy, needs DOMAIN).
+# Existing Redis: remove the redis service and set REDIS_URL. Object storage instead of the volume (several hosts,
+# Ceph / AWS / MinIO ...): set STORAGE_BACKEND=s3 and S3_* in .env (they override the defaults below).
+x-backend: &backend
+  image: ${REGISTRY:-forte}/forte-backend:${IMAGE_TAG:-latest}
+  build: { context: ., dockerfile: docker/backend.Dockerfile }
   env_file: .env
-  environment: &service-env
+  environment: &backend-env
     REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}@redis:6379/0
-    STORAGE_BACKEND: s3
-    S3_ENDPOINT: http://minio:9000
-    S3_BUCKET: ${S3_BUCKET:-forte-vision}
-    S3_ACCESS_KEY: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
-    S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    STORAGE_BACKEND: ${STORAGE_BACKEND:-fs}
+    DATA_DIR: /data
     TMPDIR: /tmp
+    FRONTEND_DIR: /nonexistent
   user: "10001:10001"
   read_only: true
+  volumes: [data:/data]
   tmpfs:
     - /tmp:size=2g,mode=1777
   security_opt: ["no-new-privileges:true"]
   cap_drop: [ALL]
   restart: unless-stopped
-  logging:
+  logging: &logging
     driver: json-file
     options: { max-size: "20m", max-file: "5" }
 
 services:
   init:
-    <<: *service
+    <<: *backend
     command: ["admin", "init-storage"]
     restart: "no"
     depends_on:
-      minio: { condition: service_healthy }
       redis: { condition: service_healthy }
 
   api:
-    <<: *service
+    <<: *backend
     command: ["api"]
-    ports: ["${PUBLIC_PORT:-8000}:8000"]
+    expose: ["8000"]
     depends_on:
       init: { condition: service_completed_successfully }
     stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
 
   worker:
-    <<: *service
+    <<: *backend
     command: ["worker"]
     depends_on:
       init: { condition: service_completed_successfully }
@@ -57,10 +64,35 @@ services:
     healthcheck:
       test: ["CMD", "python", "-m", "service.worker_main", "check"]
       interval: 30s
+      timeout: 10s
       start_period: 60s
 
+  frontend:
+    image: ${REGISTRY:-forte}/forte-frontend:${IMAGE_TAG:-latest}
+    build: { context: ., dockerfile: docker/frontend.Dockerfile }
+    ports: ["${PUBLIC_BIND:-0.0.0.0}:${PUBLIC_PORT:-8080}:8080"]
+    depends_on:
+      api: { condition: service_healthy }
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    restart: unless-stopped
+    logging: *logging
+
+  caddy:
+    image: caddy:2.10-alpine
+    profiles: ["tls"]
+    command: ["caddy", "reverse-proxy", "--from", "${DOMAIN:-localhost}", "--to", "frontend:8080"]
+    ports: ["80:80", "443:443"]
+    volumes: [caddy-data:/data]
+    depends_on: [frontend]
+    restart: unless-stopped
+    logging: *logging
+
   redis:
-    image: redis:7.4-alpine
+    image: redis:7-alpine
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes", "--appendfsync", "everysec",
               "--maxmemory-policy", "noeviction", "--save", "300", "10"]
     volumes: [redis-data:/data]
@@ -73,23 +105,9 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
-
-  minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
-    command: ["server", "/data"]
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      MINIO_BROWSER: "off"
-    volumes: [minio-data:/data]
-    healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    security_opt: ["no-new-privileges:true"]
-    restart: unless-stopped
+    logging: *logging
 
 volumes:
+  data:
   redis-data:
-  minio-data:
+  caddy-data:

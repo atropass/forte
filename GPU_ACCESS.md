@@ -19,7 +19,8 @@ exposed, GET/POST only.
 
 ## Secrets on a pod
 
-Each pod keeps its keys in `/workspace/secrets.env` (owner root, `chmod 600`, outside the git checkout):
+Each pod keeps its keys in `/workspace/secrets.env` (owner root, `chmod 600`, outside the code directory). On the CV
+pod `/workspace` is a network filesystem that ignores `chmod`; the pod has only the root user.
 
 ```bash
 # VLM pod
@@ -34,22 +35,30 @@ from the environment, so the key never appears on a command line (`ps`). Use dif
 
 ## Redeploy / rotate keys
 
-```bash
-# on the VLM pod
-cd /workspace/forte && git pull
-$EDITOR /workspace/secrets.env                 # new VLLM_API_KEY
-scripts/setup_gpu_prod.sh                      # restarts vLLM + gateway, waits for /health
+The pods have no git checkout: `/workspace/forte` is updated by streaming the relevant files from a local clone
+(`--no-same-owner`: the CV pod's network filesystem cannot change owners).
 
-# on the CV pod
-cd /workspace/forte && git pull
-$EDITOR /workspace/secrets.env                 # new CV_API_KEY
-scripts/start_cv.sh                            # restarts the CV service + gateway, waits for /health
+```bash
+# from a local clone; VLM_SSH / CV_SSH = "ssh -i <key> -p <port> root@<host>" (team vault)
+FILES="configs scripts service/cv_service.py pipeline/perception.py GPU_ACCESS.md sdk/client.py sdk/client.ts"
+tar -cf - $FILES | $VLM_SSH 'cd /workspace/forte && tar --no-same-owner -xf - && chmod +x scripts/*.sh'
+tar -cf - $FILES | $CV_SSH  'cd /workspace/forte && tar --no-same-owner -xf - && chmod +x scripts/*.sh'
+
+# on the VLM pod: new VLLM_API_KEY (and CV_API_KEY) in /workspace/secrets.env, then
+nohup /workspace/forte/scripts/setup_gpu_prod.sh > /workspace/logs/setup_gpu_prod.log 2>&1 &
+# stops the old stack, waits until it is gone, starts vLLM + gateway + watchdog, waits for /health (model load: 2-5 min)
+
+# on the CV pod: new CV_API_KEY in /workspace/secrets.env, then
+/workspace/forte/scripts/start_cv.sh             # restarts the CV service + gateway (cold start ~2-3 min)
 ```
 
-Then update the analysis service secrets and restart the workers, e.g. on Fly.io:
+The watchdog (`scripts/pod_watchdog.sh`) never interrupts a starting service; it restarts vLLM / the CV service only
+after they were healthy and then failed 3 checks in a row, or did not come up within 15 / 10 minutes.
+
+Then update `VLM_API_KEY` / `DET_API_KEY` in the service's `.env` (or secret store) and restart the workers:
 
 ```bash
-fly secrets set -a forte-vision VLM_API_KEY=<new vllm key> DET_API_KEY=<new cv key>
+docker compose up -d api worker
 ```
 
 Check from the service host:

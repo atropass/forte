@@ -20,7 +20,9 @@
 
 ```
  жюри (X-API-Key) ─┐
- веб-UI (логин)  ──┴─► api   FastAPI, без состояния: проверка и приём видео, статусы, UI
+ веб-UI (логин)  ──┴─► frontend  nginx :8080: статический UI, прокси /api → api
+                         │
+                       api   FastAPI, без состояния: проверка и приём видео, статусы
                          │
             Redis ◄──────┤   очереди api (жюри, приоритет) / ui, статусы заданий, пользователи, ключи, лимиты
                          │
@@ -32,6 +34,8 @@
  Хранилище: любой S3 API (MinIO / Ceph / AWS / R2) или общий диск (STORAGE_BACKEND=fs).
 ```
 
+* Два Docker-образа: `forte-backend` (api, worker, admin; Python 3.11 + ffmpeg 5.1) и `forte-frontend`
+  (nginx со статическим UI). Для браузера это один адрес: cookie сессии и CSRF-проверки работают без CORS.
 * Компоненты стандартные (контейнеры, Redis, S3, переменные окружения) — сервис встраивается в инфраструктуру банка
   ([docs/DEPLOY_ON_PREM.md](docs/DEPLOY_ON_PREM.md)).
 * API и воркеры масштабируются независимо; падение или зависание одного анализа не задевает остальные.
@@ -42,6 +46,11 @@
 
 ```bash
 cp .env.example .env        # VLM_API_BASE / VLM_API_KEY / DET_API_BASE / DET_API_KEY — см. GPU_ACCESS.md
+make up                     # то же, что продакшн: UI + API на http://localhost:8080 (раздел 1.1)
+```
+
+Без Docker (разработка; нужен ffmpeg ≥ 5 — в Ubuntu 22.04 он 4.4, анализ упадёт с `invalid_video`):
+```bash
 make setup                  # Python venv + зависимости UI
 make redis                  # локальный Redis в Docker
 make check-vlm              # доступен ли vLLM-сервер
@@ -54,7 +63,8 @@ make run                    # UI + API на http://localhost:8000 и ворке�
 | `make run` | UI + API + воркеры локально |
 | `make dev` | UI с горячей перезагрузкой на :3000 (вместе с `make run`) |
 | `make admin ARGS="…"` | пользователи и API-ключи (см. ниже) |
-| `make up` | продакшн-стек в Docker: api + worker + Redis + MinIO |
+| `make up` | продакшн-стек в Docker: frontend (nginx :8080) + api + worker + Redis |
+| `make images` | собрать оба образа |
 | `make test` | тесты без моделей, Redis и GPU |
 | `make loadtest URL=… KEY=…` | одновременная загрузка N видео, как у жюри |
 | `make eval-api URL=… KEY=…` | все обучающие видео через публичный API, метрики |
@@ -67,34 +77,41 @@ make run                    # UI + API на http://localhost:8000 и ворке�
 ### 1.1 Docker Compose (любой хост)
 
 ```bash
-cp .env.example .env        # задайте REDIS_PASSWORD, MINIO_ROOT_PASSWORD, PUBLIC_ORIGIN, адреса и токены GPU-серверов
+cp .env.example .env        # REDIS_PASSWORD, PUBLIC_ORIGIN, адреса и токены GPU-серверов
 docker compose up -d --build
 docker compose run --rm init admin create-api-key --name jury       # ключ показывается один раз
 docker compose run --rm init admin create-user jury                 # учётная запись UI для жюри
-curl http://localhost:8000/readyz
+curl http://localhost:8080/readyz
 ```
 
-Перед портом 8000 поставьте reverse proxy с TLS (nginx / Caddy / балансировщик банка). Свои Redis и S3: удалите
-сервисы `redis` / `minio` из [docker-compose.yml](docker-compose.yml) и задайте `REDIS_URL` / `S3_*`.
+| Сервис | Образ | Порт |
+|---|---|---|
+| `frontend` | `forte-frontend` (nginx, не root) | **8080** — единственный публичный |
+| `api` | `forte-backend`, роль `api` | 8000, только внутри сети compose |
+| `worker` | `forte-backend`, роль `worker` (`WORKER_COUNT` процессов) | — |
+| `redis` | Redis 7 (AOF) | — |
 
-### 1.2 Fly.io (один хост)
+Видео (временно), результаты и логи лежат на томе `data`, общем для `api` и `worker`.
 
-На Fly образ работает в режиме `allinone`: Redis + API + воркеры в одной машине, состояние на volume `/data`
-([fly.toml](fly.toml)). Секреты:
+`PUBLIC_ORIGIN` должен совпадать с адресом, который открывают пользователи (иначе вход отклоняется как
+межсайтовый запрос). HTTPS: reverse proxy банка перед `:8080` или встроенный Caddy —
+`DOMAIN=forte.example.kz docker compose --profile tls up -d`. Свой Redis: удалите сервис `redis` и задайте
+`REDIS_URL`. Объектное хранилище вместо тома (несколько хостов; Ceph / AWS / MinIO): `STORAGE_BACKEND=s3` и `S3_*`.
+
+### 1.2 Образы и выкладка
+
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) на каждый пуш и PR: тесты, typecheck и сборка UI,
+проверка секретов, сборка обоих образов и смоук-тест стека (frontend → api → Redis). Из `main` образы
+публикуются в GHCR: `ghcr.io/atropass/forte-backend` и `ghcr.io/atropass/forte-frontend` с тегами `sha-<коммит>` и
+`latest`. На сервере:
 
 ```bash
-fly secrets set -a forte-vision VLM_API_BASE=https://<vlm-host>/v1 VLM_API_KEY=<токен> \
-    DET_API_BASE=https://<cv-host> DET_API_KEY=<токен> METRICS_TOKEN=<случайный>
-fly ssh console -a forte-vision -C "entrypoint admin create-api-key --name jury"
-fly ssh console -a forte-vision -C "entrypoint admin create-user jury"
+echo "REGISTRY=ghcr.io/atropass" >> .env; echo "IMAGE_TAG=sha-<коммит>" >> .env
+docker compose pull && docker compose up -d --no-build
 ```
 
-Миграция пользователей из прежней версии (SQLite на volume):
-`fly ssh console -a forte-vision -C "entrypoint admin import-sqlite-users /data/users.db"`.
-
-**Деплой:** каждый пуш в `main`, прошедший тесты, сборку UI и проверку секретов, выкатывается GitHub Actions
-([.github/workflows/ci.yml](.github/workflows/ci.yml), секрет `FLY_API_TOKEN`). На время проверки жюри включите
-заморозку: переменная репозитория `DEPLOY_FREEZE=true`. Вручную: `make deploy` (сборка из `git archive` HEAD).
+Откат — предыдущий `IMAGE_TAG`. Миграция пользователей из версии 1 (SQLite):
+`docker compose run --rm -v /path/users.db:/users.db:ro init admin import-sqlite-users /users.db`.
 
 ### 1.3 Учётные записи и ключи
 

@@ -44,7 +44,8 @@
 | `service/worker.py`, `worker_main.py`, `jobqueue.py`, `reaper.py` | RQ workers (process per job, hard timeout, retry on GPU outage), job recovery |
 | `service/state.py`, `auth.py`, `blob.py` | job state, accounts, API keys in Redis; files in S3 / shared disk |
 | `service/cv_service.py` | RT-DETRv2 detector microservice on the GPU server |
-| `forte-vision-ai-development/` | Next.js UI (static export), served by the API |
+| `forte-vision-ai-development/` | Next.js UI (static export), served by nginx in the `forte-frontend` image |
+| `docker/` | `backend.Dockerfile` (api / worker / admin), `frontend.Dockerfile` + `nginx.conf` |
 
 ## Why this approach
 * **40 videos are far too few for end-to-end video classification**, and the test set uses a new camera

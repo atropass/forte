@@ -1,13 +1,14 @@
 # Runbook
 
-Commands assume the compose stack (`docker compose exec api …`); on Fly prefix with
-`fly ssh console -a forte-vision -C "…"` and use `entrypoint admin …` for the admin CLI.
+Commands assume the compose stack: `frontend` (nginx, public :8080) → `api` → Redis, plus `worker`; files on the `data` volume.
+Admin CLI: `docker compose exec api python -m service.admin …`.
 
 ## Health at a glance
 ```bash
-curl -s https://<host>/healthz                 # process alive (used by load balancer / Fly)
+curl -s https://<host>/healthz                 # api process alive (through the frontend nginx)
 curl -s https://<host>/readyz | jq             # redis, storage, workers, GPU upstreams, queue depth, calibration
-curl -s -H "Authorization: Bearer $METRICS_TOKEN" https://<host>/metrics | grep '^fv_'
+# /metrics is not exposed publicly (nginx returns 404); scrape the api service on the internal network:
+docker compose exec api python -c "import os,urllib.request as u; print(u.urlopen(u.Request('http://127.0.0.1:8000/metrics', headers={'Authorization': 'Bearer ' + os.environ['METRICS_TOKEN']})).read().decode())" | grep '^fv_'
 ```
 Key metrics: `fv_queue_depth{queue}`, `fv_jobs_active`, `fv_workers`, `fv_upstream_up{service}`,
 `fv_jobs{status,source}`, `fv_job_errors{code}`, `fv_job_duration_seconds`, `fv_job_queue_wait_seconds`.
@@ -16,7 +17,7 @@ Uptime monitoring: point an external monitor at `/readyz?strict=1` (fails when n
 unreachable) and alert after 2 consecutive failures.
 
 ## Before / during the jury evaluation
-1. Set the repository variable `DEPLOY_FREEZE=true` (CI stops deploying).
+1. Freeze the server: pin `IMAGE_TAG` in `.env` to the tested `sha-…` and do not run `docker compose pull`.
 2. `curl /readyz?strict=1` → 200, `calibration.model_match` true, no warnings.
 3. One end-to-end check: `python sdk/client.py`-style call or `make eval-api URL=… KEY=… ` with one video.
 4. Watch `fv_queue_depth` and `fv_job_errors` during the run.
@@ -48,7 +49,7 @@ docker compose exec api python -m service.admin reset-password <user>
 Rotate GPU tokens: see GPU_ACCESS.md → "Redeploy / rotate keys".
 
 ## Redis
-* Persistence: AOF (`appendfsync everysec`) on the `redis-data` volume (Fly: `/data/redis`).
+* Persistence: AOF (`appendfsync everysec`) on the `redis-data` volume.
 * Lost Redis data = lost job records, accounts and API keys (results stay in storage). Recreate accounts/keys with the
   admin CLI. For HA in a bank deployment use the bank's managed Redis (Sentinel/cluster) via `REDIS_URL`.
 
@@ -57,5 +58,6 @@ Rotate GPU tokens: see GPU_ACCESS.md → "Redeploy / rotate keys".
 * Retention: `python -m service.admin purge --older-than-days 30` (cron) or an S3 lifecycle rule on `jobs/`.
 
 ## Deploys
-* Workers finish running jobs on SIGTERM (`stop_grace_period: 330s`, Fly `kill_timeout = 300`).
-* Rollback on Fly: `fly releases -a forte-vision`, `fly deploy --image <previous image>`.
+* Workers finish running jobs on SIGTERM (`stop_grace_period: 330s`).
+* Deploy: set `IMAGE_TAG=sha-<commit>` in `.env`, `docker compose pull && docker compose up -d --no-build`.
+* Rollback: the previous `IMAGE_TAG`, same commands.

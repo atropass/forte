@@ -1,4 +1,4 @@
-"""Administration CLI (run where REDIS_URL / storage env is set, e.g. `fly ssh console` or `docker compose exec api`).
+"""Administration CLI (run where REDIS_URL / storage env is set, e.g. `docker compose exec api python -m service.admin ...`).
 
   python -m service.admin create-user <username> [--password ...]   (random password printed if omitted)
   python -m service.admin reset-password <username> [--password ...]

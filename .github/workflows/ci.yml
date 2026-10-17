@@ -1,8 +1,8 @@
-# CI: tests, UI typecheck/build and a secret scan on every push and pull request.
-# CD: every push to main that passes is deployed to Fly.io (fly.toml), unless the repository variable
-# DEPLOY_FREEZE is "true" (set it for the jury evaluation window). Needs the secret FLY_API_TOKEN
-# (flyctl tokens create deploy -a forte-vision). Third-party actions are pinned to commit SHAs.
-name: CI/CD
+# CI on every push and pull request: tests, UI typecheck/build, secret scan, and both Docker images built and
+# smoke-tested together (frontend nginx -> api -> Redis). On main the images are pushed to GHCR:
+#   ghcr.io/<owner>/forte-backend:{sha-<short>,latest}, ghcr.io/<owner>/forte-frontend:{sha-<short>,latest}
+# Third-party actions are pinned to commit SHAs.
+name: CI
 
 on:
   push:
@@ -60,23 +60,62 @@ jobs:
       - name: gitleaks (working tree)
         run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.24.0 dir /repo --config /repo/.gitleaks.toml --redact --no-banner
 
-  deploy:
+  images:
     needs: [test, ui, secrets]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_FREEZE != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    concurrency: fly-deploy   # one deploy at a time; a newer push waits for the running one
-    environment: production
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY: ghcr.io/${{ github.repository_owner }}
+      IMAGE_TAG: sha-${{ github.sha }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1  # master @ pin date
-      - run: flyctl deploy --remote-only
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-      - name: smoke test
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435  # v3.11.1
+      - name: build backend
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6.18.0
+        with:
+          context: .
+          file: docker/backend.Dockerfile
+          tags: ${{ env.REGISTRY }}/forte-backend:${{ env.IMAGE_TAG }}
+          load: true
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+      - name: build frontend
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83  # v6.18.0
+        with:
+          context: .
+          file: docker/frontend.Dockerfile
+          tags: ${{ env.REGISTRY }}/forte-frontend:${{ env.IMAGE_TAG }}
+          load: true
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+      - name: smoke test (frontend -> api -> redis, no GPU)
         run: |
-          for i in $(seq 1 30); do
-            curl -sf https://forte-vision.fly.dev/healthz && exit 0
-            sleep 10
+          cp .env.example .env
+          sed -i -e 's/^REDIS_PASSWORD=.*/REDIS_PASSWORD=ci-redis-pass/' \
+                 -e 's/^COOKIE_SECURE=.*/COOKIE_SECURE=0/' -e 's|^PUBLIC_ORIGIN=.*|PUBLIC_ORIGIN=http://localhost:8080|' .env
+          docker compose up -d --no-build --wait --wait-timeout 180 frontend
+          KEY=$(docker compose run --rm -T init admin create-api-key --name ci | tail -1)
+          ffmpeg -version >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg >/dev/null)
+          ffmpeg -loglevel error -f lavfi -i testsrc2=size=848x464:rate=25:duration=3 -c:v libx264 -pix_fmt yuv420p /tmp/x.mov
+          set -x
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/)" = 200
+          curl -sf http://localhost:8080/healthz
+          curl -s http://localhost:8080/readyz | grep -q '"redis":true'
+          test "$(curl -s -o /dev/null -w '%{http_code}' -F file=@/tmp/x.mov http://localhost:8080/api/v1/analyze)" = 401
+          curl -sf -H "X-API-Key: $KEY" -F file=@/tmp/x.mov http://localhost:8080/api/v1/analyze | grep -q job_id
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H "X-API-Key: $KEY" -F file=@.env.example http://localhost:8080/api/v1/analyze)" = 415
+      - name: logs on failure
+        if: failure()
+        run: docker compose logs --no-color | tail -200
+      - name: push to GHCR (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for img in forte-backend forte-frontend; do
+            docker tag "$REGISTRY/$img:$IMAGE_TAG" "$REGISTRY/$img:latest"
+            docker push "$REGISTRY/$img:$IMAGE_TAG"
+            docker push "$REGISTRY/$img:latest"
           done
-          exit 1

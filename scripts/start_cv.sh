@@ -35,7 +35,7 @@ else
   /usr/bin/supervisord -c "$CONF"
 fi
 
-for _ in $(seq 1 40); do
+for _ in $(seq 1 200); do
   if curl -sf http://127.0.0.1:8000/health >/dev/null; then
     echo "==> CV service healthy"
     exit 0
