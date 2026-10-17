@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Activity, AlertTriangle, ArrowUpRight, Check, CheckCircle2, ChevronRight, Clock3, Copy, FileVideo, FolderOpen, Gauge, History, ImageIcon, Info, Loader2, LogOut, Maximize2, Minus, Play, Plus, ScanLine, ShieldCheck, Upload, UserRound, Users, X, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { BatchList } from '@/components/batch-list'
+import { type BatchItem, useBatch } from '@/lib/batch'
 import { ApiError, MAX_UPLOAD_MB, VIDEO_EXT, type Catalog, type CatalogItem, type Details, type HistoryItem, type JobResult, type Progress, type Upload as UploadHandle, type Violation, getCatalog, getDetails, getHistory, getJob, getMe, getProgress, jobErrorText, login, logout, uploadVideo } from '@/lib/api'
 
 type Phase = 'idle' | 'ready' | 'uploading' | 'processing' | 'done' | 'failed'
@@ -59,6 +61,7 @@ export default function Page() {
   const [notice, setNotice] = useState<string | null>(null)
   const [duration, setDuration] = useState(0)
   const [current, setCurrent] = useState(0)
+  const batch = useBatch(() => authLost())
 
   const videoUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file])
   useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl) }, [videoUrl])
@@ -98,7 +101,25 @@ export default function Page() {
     setPhase('idle'); setFile(null); setJobId(null); setProgress(null); setResult(null); setDetails(null); setError(null)
     setSelected(0); setUploadPct(0); setDuration(0); setCurrent(0); setOpened(null); setNotice(null)
   }
-  const authLost = () => { reset(); setCatalog(null); setUser(null) }
+  const authLost = () => { reset(); batch.clear(); setCatalog(null); setUser(null) }
+  const fileProblem = (f: File) => !VIDEO_EXT.test(f.name) ? 'не .MOV/.MP4' : f.size > MAX_UPLOAD_MB * 1024 * 1024 ? `больше ${MAX_UPLOAD_MB} МБ` : f.size === 0 ? 'пустой файл' : null
+  const handleFiles = (list: FileList | null | undefined) => {
+    const files = Array.from(list ?? [])
+    if (!files.length) return
+    if (files.length === 1) { if (!busy) handleFile(files[0]); return }
+    const ok = files.filter((f) => !fileProblem(f))
+    const bad = files.filter((f) => fileProblem(f)).map((f) => `${f.name} (${fileProblem(f)})`)
+    setError(null)
+    setNotice(bad.length ? `Пропущены: ${bad.join(', ')}` : null)
+    if (ok.length) batch.add(ok)
+  }
+  const openBatch = (item: BatchItem) => {
+    if (!item.jobId) return
+    reset(); setFile(item.file); setJobId(item.jobId)
+    if (item.status === 'failed') { setError(item.error ?? 'Ошибка анализа'); setPhase('failed'); return }
+    setPhase('processing'); poll(item.jobId) // done jobs resolve on the first tick
+  }
+  const stageLabel = (stage: string | null) => STAGES.find(([k]) => k === (stage === 'started' ? 'grounding' : stage))?.[1] ?? 'Анализ'
   const handleFile = (next: File | undefined) => {
     if (!next) return
     if (!VIDEO_EXT.test(next.name)) { setError('Нужен видеофайл .MOV или .MP4'); return }
@@ -226,12 +247,13 @@ export default function Page() {
       <div className="mb-6 flex items-end justify-between"><div><p className="eyebrow">FORTEVISION AI · КОНТРОЛЬ КАССОВОЙ ДИСЦИПЛИНЫ</p><h1 className="mt-1 text-2xl font-extrabold tracking-[-0.03em] md:text-3xl">Проверка видеозаписи</h1><p className="mt-1 text-sm text-[#6e6c83]">Загрузите видео с камеры наблюдения, чтобы получить интерактивный разбор.</p></div><div className="hidden text-right sm:block"><p className="text-xs text-[#6e6c83]">СЕССИЯ ПРОВЕРКИ</p><p className="font-mono text-sm font-semibold">{jobId ? `#${jobId.toUpperCase()}` : '—'}</p></div></div>
       <div className="grid gap-6 xl:grid-cols-[1.16fr_.84fr]">
         <section className="flex min-w-0 flex-col gap-5">
-          <div className={`upload-card ${file ? 'has-file' : ''}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); if (!busy) handleFile(e.dataTransfer.files[0]) }}>
-            <input ref={inputRef} type="file" accept="video/quicktime,video/mp4,.mov,.mp4,.m4v" className="hidden" onChange={(e) => { handleFile(e.target.files?.[0]); e.target.value = '' }} />
-            {!shown ? <><div className="upload-icon"><Upload /></div><h2 className="mt-4 text-lg font-bold">Перетащите видео сюда</h2><p className="mt-1 text-sm text-[#6e6c83]">или выберите файл формата .MOV / .MP4 до {MAX_UPLOAD_MB} МБ</p><Button onClick={() => inputRef.current?.click()} className="mt-5 bg-[#a31551] px-5 text-white hover:bg-[#bf015d]"><FolderOpen data-icon="inline-start" /> Выбрать файл</Button></> : <div className="flex w-full flex-col gap-3"><div className="flex w-full items-center gap-4 text-left"><div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-[#fae7ef] text-[#a31551]"><FileVideo /></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{shown.name}</p><p className="mt-1 text-xs text-[#6e6c83]">{(shown.size / 1024 / 1024).toFixed(1)} МБ · {opened && phase === 'done' ? 'Отчёт из истории' : phase === 'ready' ? 'Готово к анализу' : phase === 'uploading' ? `Загрузка ${Math.round(uploadPct * 100)}%` : phase === 'processing' ? (progress?.queue_position ? `В очереди: ${progress.queue_position}` : STAGES[stageIdx][1]) : phase === 'done' ? 'Анализ завершён' : 'Ошибка'}</p></div>{phase === 'ready' && <Button onClick={start} className="bg-[#a31551] text-white hover:bg-[#bf015d]"><ScanLine data-icon="inline-start" /> Запустить анализ</Button>}{busy && <Loader2 className="size-5 animate-spin text-[#a31551]" />}{phase === 'uploading' && <Button onClick={reset} variant="outline" size="sm">Отменить</Button>}{!busy && <Button onClick={reset} variant="ghost" size="icon" aria-label="Убрать файл"><X /></Button>}</div>{(busy || phase === 'done') && <div className="h-1.5 w-full overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-gradient-to-r from-[#a31551] to-[#fc9385] transition-all duration-500" style={{ width: `${Math.round(pct * 100)}%` }} /></div>}</div>}
+          <div className={`upload-card ${file ? 'has-file' : ''}`} onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files) }}>
+            <input ref={inputRef} type="file" accept="video/quicktime,video/mp4,.mov,.mp4,.m4v" multiple className="hidden" onChange={(e) => { handleFiles(e.target.files); e.target.value = '' }} />
+            {!shown ? <><div className="upload-icon"><Upload /></div><h2 className="mt-4 text-lg font-bold">Перетащите видео сюда</h2><p className="mt-1 text-sm text-[#6e6c83]">или выберите один или несколько файлов .MOV / .MP4 до {MAX_UPLOAD_MB} МБ</p><Button onClick={() => inputRef.current?.click()} className="mt-5 bg-[#a31551] px-5 text-white hover:bg-[#bf015d]"><FolderOpen data-icon="inline-start" /> Выбрать файлы</Button></> : <div className="flex w-full flex-col gap-3"><div className="flex w-full items-center gap-4 text-left"><div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-[#fae7ef] text-[#a31551]"><FileVideo /></div><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{shown.name}</p><p className="mt-1 text-xs text-[#6e6c83]">{(shown.size / 1024 / 1024).toFixed(1)} МБ · {opened && phase === 'done' ? 'Отчёт из истории' : phase === 'ready' ? 'Готово к анализу' : phase === 'uploading' ? `Загрузка ${Math.round(uploadPct * 100)}%` : phase === 'processing' ? (progress?.queue_position ? `В очереди: ${progress.queue_position}` : STAGES[stageIdx][1]) : phase === 'done' ? 'Анализ завершён' : 'Ошибка'}</p></div>{phase === 'ready' && <Button onClick={start} className="bg-[#a31551] text-white hover:bg-[#bf015d]"><ScanLine data-icon="inline-start" /> Запустить анализ</Button>}{busy && <Loader2 className="size-5 animate-spin text-[#a31551]" />}{phase === 'uploading' && <Button onClick={reset} variant="outline" size="sm">Отменить</Button>}{!busy && <Button onClick={reset} variant="ghost" size="icon" aria-label="Убрать файл"><X /></Button>}</div>{(busy || phase === 'done') && <div className="h-1.5 w-full overflow-hidden rounded-full bg-white"><div className="h-full rounded-full bg-gradient-to-r from-[#a31551] to-[#fc9385] transition-all duration-500" style={{ width: `${Math.round(pct * 100)}%` }} /></div>}</div>}
             {error && <p role="alert" className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-[#a31551]"><XCircle className="size-3.5" /> {error}</p>}
             {notice && <p role="status" className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-[#6e6c83]"><Info className="size-3.5" /> {notice}</p>}
           </div>
+          <BatchList items={batch.items} activeJobId={jobId} stageLabel={stageLabel} onOpen={openBatch} onRemoveFinished={batch.removeFinished} onClear={batch.clear} />
           <div className="video-card"><div className="video-stage">{videoUrl ? <video ref={videoRef} controls playsInline className="h-full w-full object-contain" src={videoUrl} onLoadedMetadata={(e) => setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0)} onTimeUpdate={(e) => setCurrent(e.currentTarget.currentTime)} /> : <div className="video-placeholder"><div className="camera-grid" /><div className="play-ring">{opened ? <FileVideo /> : <Play fill="currentColor" />}</div><p>{opened ? `${opened.name} · видео не хранится на сервере, только отчёт` : 'Превью появится после загрузки видео'}</p></div>}</div>
             <div className="timeline-wrap"><div className="mb-2 flex justify-between text-[11px] font-semibold text-[#6e6c83]"><span>{formatTime(current)}</span><span>{formatTime(videoDuration)}</span></div><div className="timeline"><div className="timeline-progress" style={{ width: videoDuration ? `${Math.min(100, (current / videoDuration) * 100)}%` : '0%' }} />{videoDuration > 0 && violations.map((v, i) => <button key={i} aria-label={`Нарушение на ${v.timecode_sec} с`} title={`${v.type_code ?? ''} · ${formatTime(v.timecode_sec)}`} onClick={() => seek(v.timecode_sec, i)} className={`timeline-pin ${selected === i ? 'selected' : ''}`} style={{ left: `${Math.min(100, (v.timecode_sec / videoDuration) * 100)}%` }} />)}</div><div className="mt-3 flex items-center gap-2 text-xs text-[#6e6c83]">{phase === 'done' ? (violations.length ? <><AlertTriangle className="size-3.5 text-[#a31551]" /> {violations.length} {violations.length === 1 ? 'событие требует' : 'события требуют'} внимания · нажмите на метку</> : <><CheckCircle2 className="size-3.5 text-[#196b24]" /> Событий не обнаружено</>) : <><Clock3 className="size-3.5" /> Метки событий появятся после анализа</>}</div></div></div>
           <div><div className="mb-3 flex items-center justify-between"><h2 className="section-title"><ImageIcon /> Кадры-доказательства</h2><span className="text-xs text-[#6e6c83]">{sel ? `Событие ${String(selected + 1).padStart(2, '0')} · ${formatTime(sel.timecode_sec)}` : 'нет событий'}</span></div>
