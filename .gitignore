@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+# confidential dataset & derived frames: never commit
+open/
+*.mov
+Yerkes.xlsx
+Кейс_ForteBank.docx
+reports/contact_sheets/
+reports/label_strips/
+reports/first_frames_mosaic.jpg
+weights/
+jobs/
