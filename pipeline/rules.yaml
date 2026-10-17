@@ -13,6 +13,7 @@ types:
     subtype: Личные вещи на рабочем столе кассира
     trigger: periodic
     checks: [{q: personal_items, offsets: [0.0], min_yes: 1}]
+    periodic_step: 1.0   # eating/drinking lasts a few seconds (X-46); still needs 2 consecutive positive samples
     timecode_offset: 0
     observed: "На {t} с на рабочем столе кассира находятся личные вещи (сумка, одежда, еда или напитки)."
     reason: "Личные вещи работников банка должны храниться вне кассового узла."
@@ -45,7 +46,7 @@ types:
     type: Нарушение порядка хранения наличных денег на рабочем месте кассира (неубранная наличность / открытый сейф)
     subtype: Деньги предыдущей операции на столе при подходе следующего клиента
     trigger: visitor_arrived_after_visitor
-    checks: [{q: money_on_desk, offsets: [0.0, 1.0, 2.0], min_yes: 2}]
+    checks: [{q: money_on_desk, offsets: [-1.0, 0.0, 1.0], min_yes: 2}]   # just before / as the next visitor arrives (X-38: desk hidden 1 s later)
     timecode_offset: 0
     observed: "На {t} с к столу подходит следующий посетитель, при этом на столе лежат наличные деньги от предыдущей операции."
     reason: "На рабочем месте должны находиться только деньги текущего клиента; ранее принятые — в хранилище под ключ."

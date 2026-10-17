@@ -104,7 +104,11 @@ def plan(events: list[Event], duration: float, visitor_at_desk: list[float] | No
         if not rule_enabled(rid, rule):
             continue
         for tname in _triggers(rule):
-            for t0 in trig.get(tname, []):
+            times0 = trig.get(tname, [])
+            if tname == "periodic" and rule.get("periodic_step"):
+                st = float(rule["periodic_step"])  # per-rule density (short actions like drinking need 1 s)
+                times0 = [round(1.0 + i * st, 2) for i in range(int(max(0.0, duration - 2.0) / st) + 1)]
+            for t0 in times0:
                 for c in rule.get("checks", []):
                     q = c["q"]
                     if q == "handover_sequence":
@@ -217,9 +221,9 @@ def decide(checks: list[Check], periodic_min_consecutive: int = 2, seated_at=Non
             v.extra["p_yes"] = [round(_p(a), 2) for a in c.answers]
             out.append(v)
     # periodic rules need >= N consecutive positive samples (independent frames `step` apart)
-    all_periodic = sorted({c.trigger_t for c in checks if c.periodic})
-    step = (all_periodic[1] - all_periodic[0]) if len(all_periodic) > 1 else PERIODIC_STEP
     for rid, hits in periodic_hits.items():
+        own = sorted({c.trigger_t for c in checks if c.periodic and c.rule == rid})
+        step = (own[1] - own[0]) if len(own) > 1 else PERIODIC_STEP
         hits.sort(key=lambda h: h[0].trigger_t)
         run = [hits[0]]
         for h in hits[1:]:

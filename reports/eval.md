@@ -4,11 +4,11 @@ Videos: 40 unique (21 with violation, 19 clean). Duplicates X-47/X-48 excluded.
 
 | metric | value |
 |---|---|
-| video-level verdict accuracy | **0.700** (28/40) |
-| recall on violation videos | **0.571** (12/21) |
-| false-positive rate on clean videos | **0.158** (3/19) |
+| video-level verdict accuracy | **0.750** (30/40) |
+| recall on violation videos | **0.524** (11/21) |
+| false-positive rate on clean videos | **0.000** (0/19) |
 | type accuracy (label code among predicted codes; confirmed labels only) | 0.909 (10/11) |
-| timecode error, matching type (s): mean / median | 2.1 / 0.8 (n=10) |
+| timecode error, matching type (s): mean / median | 1.2 / 1.0 (n=10) |
 
 ## Per video
 
@@ -23,19 +23,19 @@ Videos: 40 unique (21 with violation, 19 clean). Duplicates X-47/X-48 excluded.
 | X-10 | 0 |  @  | — | ✅ |  |  |
 | X-11 | 1 | X01 @ 18 | X01@19.5 | ✅ | ✅ | 1.5 |
 | X-12 | 0 |  @  | — | ✅ |  |  |
-| X-13 | 1 |  @ 47 | V01@21 | ✅ |  |  |
-| X-14 | 0 |  @  | V01@11 | ❌ |  |  |
-| X-15 | 1 | V03 @ 15 | V01@11|V03@14.5 | ✅ | ✅ | 0.5 |
-| X-16 | 0 |  @  | V01@16 | ❌ |  |  |
+| X-13 | 1 |  @ 47 | — | ❌ |  |  |
+| X-14 | 0 |  @  | — | ✅ |  |  |
+| X-15 | 1 | V03 @ 15 | V03@14.5 | ✅ | ✅ | 0.5 |
+| X-16 | 0 |  @  | — | ✅ |  |  |
 | X-17 | 1 | V13 @ 7 | — | ❌ |  |  |
-| X-18 | 1 | V16 @ 20 | V02@12|V16@18.8|V02@20 | ✅ | ✅ | 1.2 |
+| X-18 | 1 | V16 @ 20 | V16@18.8 | ✅ | ✅ | 1.2 |
 | X-19 | 0 |  @  | — | ✅ |  |  |
-| X-20 | 1 | V03 @ 5 | — | ❌ |  |  |
+| X-20 | 1 | V03 @ 5 | V03@6 | ✅ | ✅ | 1.0 |
 | X-21 | 0 |  @  | — | ✅ |  |  |
 | X-22 | 1 | V03 @ 14 | X01@16 | ✅ | ❌ |  |
 | X-23 | 0 |  @  | — | ✅ |  |  |
 | X-24 | 1 | V03 @ 8 | — | ❌ |  |  |
-| X-25 | 0 |  @  | V01@6 | ❌ |  |  |
+| X-25 | 0 |  @  | — | ✅ |  |  |
 | X-26 | 1 | V03 @ 9 | V03@11.5 | ✅ | ✅ | 2.5 |
 | X-27 | 0 |  @  | — | ✅ |  |  |
 | X-28 | 1 | X01 @ 7 | X01@11 | ✅ | ✅ | 4.0 |
@@ -49,8 +49,8 @@ Videos: 40 unique (21 with violation, 19 clean). Duplicates X-47/X-48 excluded.
 | X-37 | 0 |  @  | — | ✅ |  |  |
 | X-38 | 1 | V03 @ 33 | — | ❌ |  |  |
 | X-39 | 0 |  @  | — | ✅ |  |  |
-| X-40 | 1 | V01 @ 17 | V01@6 | ✅ | ✅ | 11.0 |
+| X-40 | 1 | V01 @ 17 | V01@16 | ✅ | ✅ | 1.0 |
 | X-43 | 0 |  @  | — | ✅ |  |  |
 | X-44 | 1 | V03 @ 16 | — | ❌ |  |  |
 | X-45 | 0 |  @  | — | ✅ |  |  |
-| X-46 | 1 | V01|V03|V03 @ 11 | V01@11 | ✅ | ✅ | 0.0 |
+| X-46 | 1 | V01|V03|V03 @ 11 | — | ❌ |  |  |

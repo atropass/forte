@@ -5,10 +5,10 @@ Model: `Qwen/Qwen3-VL-4B-Instruct` (openai)
 | question | threshold | balanced acc | recall | specificity | n+ / n- |
 |---|---|---|---|---|---|
 | safe_open | 0.15 | 1.00 | 1.00 | 1.00 | 4 / 5 |
-| money_on_desk | 0.50 | 0.88 | 0.75 | 1.00 | 4 / 4 |
+| money_on_desk | 0.50 | 0.83 | 0.67 | 1.00 | 6 / 4 |
 | bag_on_desk | 0.55 | 0.83 | 0.67 | 1.00 | 3 / 4 |
 | laptop_on | 0.55 | 1.00 | 1.00 | 1.00 | 3 / 4 |
-| door_open | 0.65 | 1.00 | 1.00 | 1.00 | 3 / 4 |
+| door_open | 0.65 | 0.90 | 0.80 | 1.00 | 5 / 4 |
 | personal_items | 0.90 | 0.88 | 0.75 | 1.00 | 4 / 12 |
 | cashier_at_desk | 0.55 | 1.00 | 1.00 | 1.00 | 4 / 4 |
 | cash_in_machine | 0.20 | 0.58 | 0.33 | 0.83 | 3 / 6 |
