@@ -1,137 +1,154 @@
-# GPU Server & vLLM Access Guide
+# GPU Production Service & vLLM Access Guide
 
-This guide details how to access the GPU pod running the **Qwen3-VL-4B-Instruct** model on RunPod.
-
----
-
-## 1. Server Specification
-
-- **Provider**: RunPod (Community Cloud)
-- **Pod ID**: `h2mcn28299gso1`
-- **GPU**: 1x NVIDIA GeForce RTX 3090 (24 GB VRAM)
-- **Hourly Cost**: $0.22 / hour
-- **Persistent Volume**: 50 GB mounted at `/workspace`
-- **Model Hosted**: `Qwen/Qwen3-VL-4B-Instruct` (served with vLLM)
+This guide details the production deployment, architecture, and team access for the **Qwen3-VL-4B-Instruct** vision-language model running on RunPod.
 
 ---
 
-## 2. Public API Access (OpenAI-Compatible)
+## 1. Production Architecture Overview
 
-The server exposes standard OpenAI-compatible endpoints directly over HTTPS:
+The server runs a fully supervised, hardened production stack:
 
-- **Base URL**: `https://h2mcn28299gso1-8000.proxy.runpod.net/v1`
-- **Health Check**: `https://h2mcn28299gso1-8000.proxy.runpod.net/health`
-- **Model List**: `https://h2mcn28299gso1-8000.proxy.runpod.net/v1/models`
-- **Chat/Vision Endpoint**: `https://h2mcn28299gso1-8000.proxy.runpod.net/v1/chat/completions`
-
-### Example: Text Query (`curl`)
-
-```bash
-curl -s https://h2mcn28299gso1-8000.proxy.runpod.net/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "Qwen/Qwen3-VL-4B-Instruct",
-    "messages": [
-      {"role": "user", "content": "Hello, what model are you?"}
-    ],
-    "max_tokens": 50
-  }'
+```
+[ Developer 1 ]   [ Developer 2 ]   [ Developer 3 ]
+       │                 │                 │
+       └────────────┬────┴─────────────────┘
+                    ▼
+     https://h2mcn28299gso1-8000.proxy.runpod.net
+                    │
+         ┌──────────▼──────────┐
+         │ Nginx Gateway (:8000)│
+         │ - Bearer Token Auth │
+         │ - Rate Limiting     │
+         │ - Direct Streaming  │
+         └──────────┬──────────┘
+                    │ 127.0.0.1:8001
+         ┌──────────▼──────────┐
+         │ vLLM Engine (:8001) │
+         │ - Chunked Prefill   │
+         │ - Prefix Caching    │
+         │ - PagedAttention    │
+         │ - Supervisord Auto-R│
+         └─────────────────────┘
 ```
 
-### Example: Multimodal / Vision Query (`curl`)
+### Server Specifications
+- **Provider**: RunPod (GPU Cluster)
+- **Pod ID**: `h2mcn28299gso1`
+- **GPU**: 1x NVIDIA GeForce RTX 3090 (24 GB VRAM)
+- **Cost**: $0.22 / hour (Dev/Staging) — scale to RTX 4090 / L40S Secure Cloud ($0.89/hr) with the same configs
+- **Process Supervisor**: `supervisord` (auto-restarts vLLM and Nginx on crash or OOM)
+- **Model**: `Qwen/Qwen3-VL-4B-Instruct` (FlashAttention-2 + Torch Compile)
+
+---
+
+## 2. Endpoints & Authentication
+
+All API requests require the production Bearer token:
+
+- **API Base URL**: `https://h2mcn28299gso1-8000.proxy.runpod.net/v1`
+- **Bearer Token**: `fv-prod-secret-forte-2026`
+- **Health Check**: `https://h2mcn28299gso1-8000.proxy.runpod.net/health` (unauthenticated for uptime monitors)
+- **Prometheus Metrics**: `https://h2mcn28299gso1-8000.proxy.runpod.net/metrics`
+
+---
+
+## 3. Team Usage (For the 3 Developers)
+
+### A. Python Client (`sdk/client.py`)
+
+A client with retry logic, base64 vision encoding, and token authentication is provided in `sdk/client.py`:
+
+```python
+from sdk.client import VLLMClient
+
+client = VLLMClient(
+    base_url="https://h2mcn28299gso1-8000.proxy.runpod.net/v1",
+    api_key="fv-prod-secret-forte-2026"
+)
+
+# 1. Text Query
+answer = client.chat("Summarize the cashier compliance checklist.")
+print(answer)
+
+# 2. Vision / Image Query (local image or remote URL)
+verdict = client.analyze_image(
+    prompt="Is there an unattended visitor at the desk?",
+    image_path_or_url="path/to/frame.jpg"
+)
+print(verdict)
+```
+
+### B. TypeScript / Next.js Client (`sdk/client.ts`)
+
+```typescript
+import { VLLMClient } from "@/sdk/client";
+
+const client = new VLLMClient({
+  baseUrl: process.env.NEXT_PUBLIC_VLLM_URL,
+  apiKey: process.env.VLLM_API_KEY,
+});
+
+const response = await client.chat("Is the cash safe door closed?");
+```
+
+### C. Direct `curl`
 
 ```bash
 curl -s https://h2mcn28299gso1-8000.proxy.runpod.net/v1/chat/completions \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer fv-prod-secret-forte-2026" \
   -d '{
     "model": "Qwen/Qwen3-VL-4B-Instruct",
     "messages": [
-      {
-        "role": "user",
-        "content": [
-          {"type": "text", "text": "Describe what is visible in this image."},
-          {
-            "type": "image_url",
-            "image_url": {
-              "url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/640px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
-            }
-          }
-        ]
-      }
+      {"role": "user", "content": "Explain bank cashier desk security."}
     ],
     "max_tokens": 100
   }'
 ```
 
-### Example: Python OpenAI Client
+---
 
-```python
-from openai import OpenAI
+## 4. Concurrency Benchmark Results
 
-client = OpenAI(
-    base_url="https://h2mcn28299gso1-8000.proxy.runpod.net/v1",
-    api_key="empty",  # vLLM runs unauthenticated by default
-)
+Tested with `scripts/bench_vllm_prod.py` simulating 3 concurrent developers sending simultaneous requests:
 
-response = client.chat.completions.create(
-    model="Qwen/Qwen3-VL-4B-Instruct",
-    messages=[
-        {"role": "user", "content": "Explain cash compliance rules in one sentence."}
-    ],
-)
-print(response.choices[0].message.content)
+```
+User     Status     Latency (s)    Tokens   Tok/s   
+-----------------------------------------------------------------
+User 1   success    2.15           101      47.0    
+User 2   success    2.07           107      51.8    
+User 3   success    1.93           112      58.1    
+-----------------------------------------------------------------
+Total Wall Time:          2.15 s
+Total Tokens Generated:   320
+Aggregate Throughput:     148.8 tokens/sec
+Average Per-User Latency: 2.05 s
 ```
 
 ---
 
-## 3. SSH Shell Access
+## 5. SSH Access & Process Maintenance
 
-Your registered SSH key (`~/.ssh/id_ed25519`) has authorized access to the pod.
-
-### Direct SSH (Recommended)
-
+Connect via direct SSH:
 ```bash
 ssh -i ~/.ssh/id_ed25519 -p 8655 root@64.119.209.250
 ```
 
-### RunPod Proxy SSH (Alternative)
-
-```bash
-ssh -i ~/.ssh/id_ed25519 h2mcn28299gso1-64411c0f@ssh.runpod.io
-```
-
----
-
-## 4. Server Management & Maintenance
-
-Once connected via SSH:
-
-- **Check GPU Status**:
+Inside the pod:
+- **Check Supervisor Status**:
   ```bash
-  nvidia-smi
+  supervisorctl -c /workspace/forte/configs/supervisord.conf status
   ```
-
-- **Live Service Logs**:
+- **Restart vLLM Service**:
   ```bash
-  tail -f /workspace/vllm.log
+  supervisorctl -c /workspace/forte/configs/supervisord.conf restart vllm
   ```
-
-- **Environment & Paths**:
-  - Python Virtual Environment: `/workspace/venv`
-  - Model Weights Cache: `/workspace/hf_home`
-  - Service Log: `/workspace/vllm.log`
-  - Repository Code: `/workspace/forte`
-
-- **Restarting vLLM**:
-  If the server process ever needs a restart:
+- **Inspect Live Logs**:
   ```bash
-  pkill -f vllm
-  export HF_HOME=/workspace/hf_home
-  setsid /workspace/venv/bin/python -m vllm.entrypoints.openai.api_server \
-    --model Qwen/Qwen3-VL-4B-Instruct \
-    --host 0.0.0.0 \
-    --port 8000 \
-    --max-model-len 8192 \
-    --gpu-memory-utilization 0.85 \
-    --trust-remote-code > /workspace/vllm.log 2>&1 < /dev/null &
+  tail -f /workspace/logs/vllm.log
+  tail -f /workspace/logs/nginx_access.log
+  ```
+- **Re-run Automated Setup**:
+  ```bash
+  /workspace/forte/scripts/setup_gpu_prod.sh
   ```
