@@ -38,8 +38,9 @@ EVIDENCE_OBJECT = {
     "money_left_unattended": "desk", "bag_left_on_desk": "desk", "prev_client_money_on_desk": "desk",
     "personal_items_on_desk": "desk", "unsecured_valuables_generic": "desk",
     "laptop_unlocked_unattended": "laptop", "door_left_open": "door",
+    "cash_in_machine_no_client": "counting_machine",
 }
-EVIDENCE_LABEL = {"safe": "сейф", "desk": "стол", "laptop": "ноутбук", "door": "дверь"}
+EVIDENCE_LABEL = {"safe": "сейф", "desk": "стол", "laptop": "ноутбук", "door": "дверь", "counting_machine": "счётная машинка"}
 
 Progress = Callable[[str, float], None]
 
@@ -47,7 +48,8 @@ Progress = Callable[[str, float], None]
 def _dbg_answer(a):
     if isinstance(a, handover.EpisodeResult):
         return {"kind": a.kind, "t": a.t, "conf": a.confidence, "id_seen_at": a.id_seen_at,
-                "first_cash": a.first_cash, "first_bag": a.first_bag, "trace": a.trace}
+                "first_cash": a.first_cash, "first_bag": a.first_bag, "partial_at": a.partial_at,
+                "give_onsets": a.give_onsets, "trace": a.trace}
     if getattr(a, "p", None) is not None:
         return round(a.p, 3)
     return getattr(a, "answer", a)
@@ -159,7 +161,13 @@ class Analyzer:
             s = min(states, key=lambda x: abs(x.t - t))
             return s.seated
 
-        violations = decide(checks, seated_at=seated_at)
+        def alone_at(t: float) -> bool | None:
+            if not states:
+                return None
+            s = min(states, key=lambda x: abs(x.t - t))
+            return s.inside == 1 and not s.visitor
+
+        violations = decide(checks, seated_at=seated_at, alone_at=alone_at)
 
         prog("evidence", 0.90)
         out_v = []

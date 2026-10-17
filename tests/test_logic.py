@@ -22,35 +22,35 @@ def frames(seq):
 
 
 def test_id_then_cash_is_clean():
-    t, p = frames(list("FFAAEEFFCCC"))
+    t, p = frames(list("GGAAEEGGCCC"))
     r = handover.decide_episode(t, p)
-    assert r.kind is None and r.id_seen_at == 1.0 and r.first_cash == 4.0
+    assert r.kind is None and r.id_seen_at == 1.0 and r.first_cash == 4.0 and r.partial_at is None
 
 
 def test_phone_digital_id_counts_as_id():
-    t, p = frames(list("FFBBFFCCC"))
+    t, p = frames(list("GGBBGGCCC"))
     assert handover.decide_episode(t, p).kind is None
 
 
 def test_cash_without_id_is_v05_with_handover_timecode():
-    t, p = frames(list("FFFFCCCC"))
+    t, p = frames(list("GGGGCCCC"))
     r = handover.decide_episode(t, p)
     assert r.kind == "client_no_id" and r.t == 2.0
 
 
 def test_bag_without_documents_is_v13():
-    t, p = frames(list("FFDDDFF"))
+    t, p = frames(list("GGDDDGG"))
     r = handover.decide_episode(t, p)
     assert r.kind == "collector_no_id" and r.t == 1.0
 
 
 def test_single_flicker_is_not_a_handover():
-    t, p = frames(list("FFCFFFF"))
+    t, p = frames(list("GGCGGGG"))
     assert handover.decide_episode(t, p).kind is None
 
 
 def test_id_after_money_does_not_excuse():
-    t, p = frames(list("FCCCFAAA"))
+    t, p = frames(list("GCCCGAAA"))
     assert handover.decide_episode(t, p).kind == "client_no_id"
 
 
@@ -67,7 +67,7 @@ def test_handover_rule_fires_once_per_matching_kind():
     checks = [c for c in plan(ev, 30.0) if c.question == "handover_sequence"]
     assert {c.rule for c in checks} == {"client_no_id", "collector_no_id"}
     assert checks[0].times[0] == 2.0 and checks[0].times[-1] <= 20.0
-    t, p = frames(list("FFFFCCCC"))
+    t, p = frames(list("GGGGCCCC"))
     res = handover.decide_episode(t, p)
     for c in checks:
         c.answers = [res]
@@ -91,3 +91,24 @@ def test_normalize_and_token_variants():
 def test_refine_only_where_state_changes():
     s = [StateSample(0.5, 1, True, False), StateSample(2.0, 1, True, False), StateSample(3.5, 0, False, False)]
     assert refine_times(s, {0.5, 2.0, 3.5}) == [2.5, 3.0]
+
+
+def test_cash_given_to_client_twice_is_partial_disbursement():
+    t, p = frames(list("GAAGGFFGGGFFGG"))
+    r = handover.decide_episode(t, p)
+    assert r.kind is None  # ID shown first
+    assert r.give_onsets == [2.5, 5.0] and r.partial_at == 5.0
+
+
+def test_single_disbursement_with_one_frame_dip_is_not_partial():
+    t, p = frames(list("GAAGFFGFFGG"))
+    assert handover.decide_episode(t, p).partial_at is None
+
+
+def test_calibration_gated_rules_off_by_default(monkeypatch):
+    from pipeline import rules
+    monkeypatch.setattr(rules, "THRESHOLDS", {})
+    assert not rules.rule_enabled("partial_disbursement", rules.RULES["partial_disbursement"])
+    assert rules.rule_enabled("money_left_unattended", rules.RULES["money_left_unattended"])
+    monkeypatch.setattr(rules, "THRESHOLDS", {"enabled_rules": ["partial_disbursement"]})
+    assert rules.rule_enabled("partial_disbursement", rules.RULES["partial_disbursement"])

@@ -39,11 +39,11 @@ def parse_seconds(s):
 # Mapping of the teammate's free-text (col 4) to type ids. Derived by reading every description and
 # looking at the frames around each timecode (reports/label_strips/). See reports/data_audit.md.
 TYPE_BY_VIDEO = {
-    "X-1": ["unchecked_rejected_banknotes?"],  # no description; hypothesis, see audit
+    "X-1": ["partial_disbursement"],  # team 2026-10-17: cash not handed out all at once
     "X-2": ["client_no_id"],
     "X-4": ["prev_client_money_on_desk"],
     "X-11": ["laptop_unlocked_unattended"],
-    "X-13": ["unknown?"],  # no description; hypotheses in audit
+    "X-13": ["unknown?"],  # team: "seems nothing but cash and ID may be on the desk" — not separable from clean X-14
     "X-15": ["bag_left_on_desk"],
     "X-17": ["collector_no_id"],
     "X-18": ["second_client_during_service"],
@@ -58,7 +58,7 @@ TYPE_BY_VIDEO = {
     "X-34": ["client_no_id"],
     "X-38": ["prev_client_money_on_desk"],
     "X-40": ["personal_items_on_desk"],
-    "X-44": ["unchecked_rejected_banknotes?"],  # no description; hypothesis
+    "X-44": ["cash_in_machine_no_client"],  # team 2026-10-17: cash in the counting machine with no client
     "X-46": ["personal_items_on_desk", "money_left_on_desk", "key_left_in_safe"],
     "X-47": ["prev_client_money_on_desk"],
 }
@@ -68,6 +68,14 @@ RULE_CODES = {k: v.get("code", "") for k, v in
               yaml.safe_load((ROOT / "pipeline" / "rules.yaml").read_text())["types"].items()}
 RULE_CODES["money_left_on_desk"] = "V03"
 RULE_CODES["unknown"] = "?"
+
+
+# team answers for rows without a description in the sheet (2026-10-17)
+TEAM_NOTES = {
+    "X-1": "выдала не всю наличку, нужно выдавать сразу всё",
+    "X-13": "кажется, на стол нельзя ставить ничего, кроме денег и удостоверения",
+    "X-44": "деньги в кассовом аппарате, когда нет клиента",
+}
 
 
 def probe(path: Path) -> dict:
@@ -99,7 +107,7 @@ def main():
         verdict = str(r[2] or "").strip().lower()
         has_v = verdict == "нарушение"
         t = parse_seconds(r[1])
-        desc = (r[3] or "").strip()
+        desc = (r[3] or "").strip() or TEAM_NOTES.get(vid, "")
         if vid not in videos:
             unmatched.append(vid)
         types = TYPE_BY_VIDEO.get(vid, []) if has_v else []

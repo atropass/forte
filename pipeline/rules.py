@@ -17,7 +17,7 @@ import yaml
 
 from . import handover
 from .timeline import Event
-from .vlm import threshold
+from .vlm import THRESHOLDS, threshold
 
 RULES = yaml.safe_load((Path(__file__).parent / "rules.yaml").read_text())["types"]
 
@@ -78,13 +78,23 @@ def expand_triggers(events: list[Event], duration: float) -> dict[str, list[floa
     return trig
 
 
+def rule_enabled(rid: str, rule: dict) -> bool:
+    """Rules marked requires_calibration run only after scripts/calibrate.py has shown that their check
+    separates violation from clean videos on the deployed model (listed in thresholds.yaml: enabled_rules)."""
+    if rule.get("enabled", True) is False:
+        return False
+    if rule.get("requires_calibration"):
+        return rid in ((THRESHOLDS or {}).get("enabled_rules") or [])
+    return True
+
+
 def plan(events: list[Event], duration: float) -> list[Check]:
     CHECK_BASE.clear()
     EPISODE_END.clear()
     trig = expand_triggers(events, duration)
     checks: list[Check] = []
     for rid, rule in RULES.items():
-        if rule.get("enabled", True) is False:
+        if not rule_enabled(rid, rule):
             continue
         for tname in _triggers(rule):
             for t0 in trig.get(tname, []):
@@ -145,8 +155,9 @@ def votes(c: Check) -> tuple[bool, float]:
     return (sum(p >= thr for p in ps) >= max(1, c.min_yes) or mean >= thr), mean
 
 
-def decide(checks: list[Check], periodic_min_consecutive: int = 2, seated_at=None) -> list[Violation]:
-    """seated_at(t) -> bool | None: cashier seated at that time (from the scene-state pass)."""
+def decide(checks: list[Check], periodic_min_consecutive: int = 2, seated_at=None, alone_at=None) -> list[Violation]:
+    """seated_at(t) / alone_at(t) -> bool | None: cashier seated / cashier alone in the room at time t
+    (from the scene-state pass)."""
     out: list[Violation] = []
     periodic_hits: dict[str, list[tuple[Check, float]]] = {}
     for c in checks:
@@ -157,6 +168,13 @@ def decide(checks: list[Check], periodic_min_consecutive: int = 2, seated_at=Non
             continue
         if c.question == "handover_sequence":
             res = c.answers[0] if c.answers else None
+            if res is not None and c.rule == "partial_disbursement":
+                if res.partial_at is not None:
+                    v = _mk(c, rule, round(res.partial_at, 1), [res.give_onsets[0], res.partial_at, res.partial_at + 1.0],
+                            0.6, "timeline+vlm-sequence")
+                    v.extra.update(give_onsets=res.give_onsets)
+                    out.append(v)
+                continue
             if res is not None and res.kind == c.rule and res.t is not None:
                 v = _mk(c, rule, round(res.t, 1), [res.t, res.t + 0.5, res.t + 1.5], res.confidence, "timeline+vlm-sequence")
                 v.extra.update(first_cash=res.first_cash, first_bag=res.first_bag)
@@ -172,8 +190,9 @@ def decide(checks: list[Check], periodic_min_consecutive: int = 2, seated_at=Non
             continue
         fired, mean = votes(c)
         if c.periodic:
-            gate = rule.get("periodic_requires_seated", False)
-            if gate and seated_at is not None and not seated_at(c.trigger_t):
+            if rule.get("periodic_requires_seated") and seated_at is not None and not seated_at(c.trigger_t):
+                continue
+            if rule.get("periodic_requires_alone") and alone_at is not None and not alone_at(c.trigger_t):
                 continue
             if fired:
                 periodic_hits.setdefault(c.rule, []).append((c, mean))

@@ -89,3 +89,9 @@ Our rule engine will emit `timecode_sec` = start of the trigger event. Evidence 
 4. X-46 has three types in one description; the cashier never leaves. "Key in safe" here means the key stays in the lock while she works.
 5. X-11: camera auto-exposure drops sharply at 16 s (scene goes dark). The perception layer must tolerate global brightness jumps.
 6. People are visible **through the glass wall** (outside the room) in most videos. Person detection must not count them as clients, so we need a room/door model, not just a person count.
+
+## 6. Team answers (2026-10-17)
+* X-1 (22 s): "cash not handed out all at once" → **X03** partial disbursement. Frames: the cashier passes cash to the client at ~20 s and again at ~23 s.
+* X-44 (16 s): "cash in the counting machine when there is no client" → **V03** (п.20 абз.2). The clean twins X-43/X-45 also show the cashier alone handling cash at the machine, so the rule is calibration-gated.
+* X-13 (47 s): "seems nothing but cash and ID may be put on the desk" — unconfirmed. Not separable from clean X-14 (same items on the desk); kept as unknown.
+* No further reasons were found in Yerkes.xlsx (one sheet, no hidden cells or comments; only X-46 lists several reasons).

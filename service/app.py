@@ -214,11 +214,13 @@ def catalog():
         items.append({"code": v["code"], "category": v["category"], "category_ru": cov["categories"].get(v["category"]),
                       "type_ru": v["type_ru"], "status": c.get("status", "not_detected"), "note": c.get("note"),
                       "clause": ref["clause"] if ref else None, "verified": bool(ref and ref.get("verified"))})
-    for code in ("X01", "X02"):
-        c = cov["codes"][code]
-        ref = norms["refs"][code]
-        items.append({"code": code, "category": "extra", "category_ru": cov["categories"]["extra"], "type_ru": c["type_ru"],
-                      "status": c["status"], "note": c["note"], "clause": ref["clause"], "verified": bool(ref.get("verified"))})
+    for code, c in cov["codes"].items():  # codes beyond the team catalog (X01, X02, X03, ...)
+        if not code.startswith("X"):
+            continue
+        ref = norms["refs"].get(code) or {}
+        cat_key = c.get("category", "extra")
+        items.append({"code": code, "category": cat_key, "category_ru": cov["categories"].get(cat_key), "type_ru": c["type_ru"],
+                      "status": c["status"], "note": c["note"], "clause": ref.get("clause"), "verified": bool(ref.get("verified"))})
     return {"items": items, "categories": cov["categories"], "models": state["models"]}
 
 

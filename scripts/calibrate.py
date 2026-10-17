@@ -60,6 +60,7 @@ def main():
         return ground[vid]
 
     items = yaml.safe_load((ROOT / "scripts" / "feasibility_items.yaml").read_text())
+    enabled, stats = [], {}
     out, lines = {}, ["# Threshold calibration", "", f"Model: `{vlm.backend.model_id}` ({vlm.backend.name})", "",
                       "| question | threshold | balanced acc | recall | specificity | n+ / n- |", "|---|---|---|---|---|---|"]
     for qid, labs in items.items():
@@ -76,6 +77,7 @@ def main():
         neg = [p for p, y in zip(ps, ys) if not y]
         thr, bal, tpr, tnr = best_threshold(pos, neg)
         out[qid] = float(thr)
+        stats[qid] = (bal, tpr)
         lines.append(f"| {qid} | {thr:.2f} | {bal:.2f} | {tpr:.2f} | {tnr:.2f} | {len(pos)} / {len(neg)} |")
         print(qid, thr, round(bal, 2), "pos", [round(p, 2) for p in pos], "neg", [round(p, 2) for p in neg], flush=True)
 
@@ -99,12 +101,27 @@ def main():
                 best = (score, id_thr, act_thr, res)
     (score, id_thr, act_thr, res) = best
     out["handover_id"], out["handover_act"] = float(id_thr), float(act_thr)
+    # calibration-gated rules: switched on only when their signal separates violation from clean
+    bal, tpr = stats.get("cash_in_machine", (0, 0))
+    if bal >= 0.8 and tpr >= 0.67:
+        enabled.append("cash_in_machine_no_client")
+    judged = [(r, e) for r, e in zip(res, eps) if "partial" in e]
+    partial_ok = judged and all((r.partial_at is not None) == e["partial"] for r, e in judged)
+    if partial_ok:
+        enabled.append("partial_disbursement")
+    out["enabled_rules"] = enabled
     lines += ["", f"## Hand-over episodes (V05 / V13): handover_id={id_thr}, handover_act={act_thr}", "",
               f"{score[0]}/{len(eps)} episodes correct.", "",
               "| video | expected | got | handover t | label t | ID seen at |", "|---|---|---|---|---|---|"]
     for r, e in zip(res, eps):
         lines.append(f"| {e['video']} | {e['expected'] or 'clean'} | {r.kind or 'clean'} | {r.t} | {e.get('handover_t', '')} | {r.id_seen_at} |")
-    lines += ["", "Small sample (10 episodes, 3 violations): treat as a starting point, re-check on new footage."]
+    lines += ["", "| video | X03 expected | 2nd hand-over at | label t |", "|---|---|---|---|"]
+    lines += [f"| {e['video']} | {'partial' if e['partial'] else 'whole'} | {r.partial_at} | {e.get('partial_t', '')} |"
+              for r, e in judged]
+    lines += ["", f"**Calibration-gated rules enabled:** {', '.join(enabled) or 'none'} "
+              "(cash_in_machine_no_client needs balanced acc >= 0.8 and recall >= 0.67; partial_disbursement needs "
+              "every judged episode right).", "",
+              "Small sample (10 episodes, 4 violations): treat as a starting point, re-check on new footage."]
     thr_file = Path(os.getenv("THRESHOLDS_FILE", ROOT / "pipeline" / "thresholds.yaml"))
     thr_file.parent.mkdir(parents=True, exist_ok=True)
     thr_file.write_text(

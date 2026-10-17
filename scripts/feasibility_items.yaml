@@ -34,3 +34,6 @@ bag_handover:
 banknote_manual_check:
   yes: [[X-3, [12, 13, 14, 15]]]
   no:  [[X-1, [19, 20, 21, 22]], [X-44, [13, 14, 15, 16]]]
+cash_in_machine:   # team: X-44 = cash left in the counting machine while no client; X-43/X-45 clean twins
+  yes: [[X-44, 6], [X-44, 9], [X-44, 11]]
+  no:  [[X-43, 6], [X-43, 10], [X-45, 8], [X-45, 14], [X-21, 15], [X-26, 4]]

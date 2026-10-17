@@ -80,6 +80,18 @@ types:
     checks: []
     enabled: false   # seed #9, no training example; visually the same as key_left_in_safe
     legal: V03_keys
+  cash_in_machine_no_client:
+    code: V03
+    type: Нарушение порядка хранения наличных денег на рабочем месте кассира (неубранная наличность / открытый сейф)
+    subtype: Наличные в счётной машинке вне обслуживания клиента
+    trigger: periodic
+    checks: [{q: cash_in_machine, offsets: [0.0], min_yes: 1}]
+    periodic_requires_alone: true      # only while the cashier is alone in the room (no client is served)
+    requires_calibration: cash_in_machine   # enabled only if scripts/calibrate.py separates X-44 from X-43/X-45
+    timecode_offset: 0
+    observed: "На {t} с в помещении нет клиента, а в счётной машинке остаются наличные деньги."
+    reason: "Ранее принятые наличные деньги вне обслуживания клиента должны храниться в устройствах, закрывающихся на ключ."
+    legal: V03
   bag_left_on_desk:
     code: V03
     type: Нарушение порядка хранения наличных денег на рабочем месте кассира (неубранная наличность / открытый сейф)
@@ -118,7 +130,7 @@ types:
     subtype: Отбракованные машиной банкноты не проверены вручную
     trigger: visitor_episode
     checks: []
-    enabled: false   # X-1/X-44 hypothesis, unconfirmed by the team; manual-check question 0.67 in Phase 2
+    enabled: false   # no training example: the team says X-1 is X03 and X-44 is cash in the machine (V03)
     legal: V06
   # ---------------------------------------------------------------- V13
   collector_no_id:
@@ -154,6 +166,17 @@ types:
     reason: "Кассовое помещение должно быть изолировано дверью, закрывающейся на замок."
     legal: V17
   # ---------------------------------------------------------------- not in the team catalog
+  partial_disbursement:
+    code: X03
+    type: Выдача наличных денег клиенту частями (не вся подготовленная сумма сразу)
+    subtype: Наличные выданы клиенту в несколько приёмов
+    trigger: visitor_episode
+    checks: [{q: handover_sequence}]   # pipeline/handover.py: >= 2 separate cashier->client cash hand-overs
+    requires_calibration: partial_disbursement   # enabled only if calibration separates X-1 from clean episodes
+    timecode_offset: 0
+    observed: "На {t} с кассир повторно передаёт клиенту наличные: сумма выдана не целиком, а в несколько приёмов."
+    reason: "Сумма к выдаче должна быть подготовлена, пересчитана в присутствии клиента и выдана."
+    legal: X03
   laptop_unlocked_unattended:
     code: X01
     type: Рабочий компьютер кассира не заблокирован при уходе

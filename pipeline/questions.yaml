@@ -23,6 +23,12 @@ questions:
     threshold: 0.5
     scope: crop:desk
     text: Is there a cash-collection bag or sack (fabric bag, often green) lying on the desk?
+  cash_in_machine:
+    threshold: 0.5
+    scope: crop:counting_machine
+    text: >-
+      Are banknotes lying in the counting machine (in its input hopper or output tray), as opposed to an empty
+      machine?
   laptop_on:
     threshold: 0.5
     scope: crop:laptop
