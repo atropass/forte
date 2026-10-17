@@ -1,0 +1,35 @@
+# What the service actually checks, per catalog code (see legal/catalog_verification.md).
+# status: detected | low_confidence | untested | disabled | not_detected
+categories:
+  workstation_discipline: Дисциплина рабочего места
+  cash_acceptance: Приём наличности от клиента
+  cash_disbursement: Выдача наличности клиенту
+  internal_cash_handling: Внутренний пересчёт и упаковка
+  inkassatsiya: Инкассация
+  security_and_premises: Безопасность и устройство кассы
+  counterfeit_and_doubtful_cash: Сомнительные и поддельные банкноты
+  extra: Дополнительно (вне каталога)
+codes:
+  V01: {status: detected, note: "Личные вещи на столе; использование телефона пока не проверяется"}
+  V02: {status: untested, note: "Посетитель у стола при пустом месте кассира; нет примеров в обучающих данных"}
+  V03: {status: detected, note: "Деньги/сумка на столе при уходе, деньги прошлой операции, открытый сейф; ключ в замке — не различим при 464 px"}
+  V04: {status: not_detected, note: "Документы неразличимы на видео 464 px"}
+  V05: {status: low_confidence, note: "Удостоверение и пачка купюр одинаково мелкие (~10 px)"}
+  V06: {status: disabled, note: "Ожидает подтверждения разметки X-1/X-44"}
+  V07: {status: not_detected, note: "Нет примеров в данных"}
+  V08: {status: not_detected, note: "Подписи и штампы не видны"}
+  V09: {status: not_detected, note: "Нет примеров в данных"}
+  V10: {status: disabled, note: "Одиночный пересчёт встречается в чистых видео обучающей выборки"}
+  V11: {status: not_detected, note: "Документ учёта невидим"}
+  V12: {status: not_detected, note: "Бандероли не различимы"}
+  V13: {status: low_confidence, note: "Передача сумки видна; документы инкассатора — нет"}
+  V14: {status: not_detected, note: "Нет примеров в данных"}
+  V15: {status: not_detected, note: "Нет примеров в данных"}
+  V16: {status: detected, note: "Второй посетитель во время обслуживания"}
+  V17: {status: detected, note: "Дверь остаётся открытой после входа"}
+  V18: {status: not_detected, note: "В этой конфигурации нет лотка/кабины"}
+  V19: {status: not_detected, note: "Нет примеров в данных"}
+  X01: {status: detected, note: "Экран ноутбука не заблокирован при уходе кассира", category: extra,
+        type_ru: "Рабочий компьютер кассира не заблокирован при уходе"}
+  X02: {status: detected, note: "Клиент вошёл, когда кассир не готов", category: extra,
+        type_ru: "Обслуживание клиента до готовности рабочего места кассира"}

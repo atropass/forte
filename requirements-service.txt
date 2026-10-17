@@ -1,0 +1,8 @@
+# Service + pipeline deps common to both backends (vLLM image already ships torch/transformers/vllm).
+fastapi==0.143.3
+uvicorn[standard]==0.54.0
+python-multipart
+pyyaml
+pillow
+numpy
+jsonschema

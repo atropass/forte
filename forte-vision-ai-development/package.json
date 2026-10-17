@@ -1,8 +1,7 @@
 {
-  "name": "my-project",
+  "name": "fortevision-ui",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@12.3.4",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,7 +9,6 @@
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
-    "@vercel/analytics": "1.6.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.16.0",

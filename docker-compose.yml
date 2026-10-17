@@ -1,0 +1,29 @@
+# One command:  docker compose up -d --build   (after scripts/download_weights.sh and setting API_KEY in .env)
+services:
+  backend:
+    build: { context: ., dockerfile: docker/backend.Dockerfile }
+    env_file: .env
+    environment:
+      - VLLM_GPU_UTIL=${VLLM_GPU_UTIL:-0.75}
+      - VLLM_MAX_MODEL_LEN=${VLLM_MAX_MODEL_LEN:-8192}
+    volumes:
+      - ./weights:/weights:ro
+      - ./data_service:/data
+      - ./open:/app/open:ro          # optional: training videos, only for `scripts/bench.py`
+    deploy:
+      resources:
+        reservations:
+          devices: [{ driver: nvidia, count: 1, capabilities: [gpu] }]
+    ipc: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import json,urllib.request;exit(0 if json.load(urllib.request.urlopen('http://localhost:8000/healthz'))['ok'] else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 300s
+      retries: 3
+  frontend:
+    build: { context: ., dockerfile: docker/frontend.Dockerfile }
+    ports: ["${PUBLIC_PORT:-80}:80"]
+    depends_on: [backend]
+    restart: unless-stopped

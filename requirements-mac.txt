@@ -1,0 +1,12 @@
+# Development on Apple silicon (MLX backend).
+-r requirements-service.txt
+torch
+torchvision
+transformers
+mlx-vlm==0.7.8
+openpyxl
+pandas
+scikit-learn
+scikit-image
+pytest
+httpx
