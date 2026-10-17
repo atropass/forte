@@ -81,16 +81,23 @@ def load_models():
         from pipeline.vlm import VLM
         from pipeline.vlm_backends import make_backend
 
-        backend = make_backend()
+        aux_id = os.getenv("VLM_AUX_MODEL", "").strip()
+        backend = make_backend(gpu_util=float(os.getenv("VLLM_GPU_UTIL_MAIN", "0.40")) if aux_id else None)
+        aux = None
+        if aux_id:  # second model for hand-over frames only (V05/V13 ensemble); shares the GPU with the main one
+            aux = VLM(make_backend(model_id=aux_id, gpu_util=float(os.getenv("VLLM_GPU_UTIL_AUX", "0.35"))), max_side=848)
         det = Detector()
-        an = Analyzer(VLM(backend, max_side=848), det)
-        # warm-up: one detector batch + one VLM call
+        an = Analyzer(VLM(backend, max_side=848), det, aux_vlm=aux)
+        # warm-up: detector batch + one generation + one decision-mode call per model
         dummy = np.full((848, 464, 3), 128, np.uint8)
         det(dummy[None])
         an.vlm.ask([("cashier_at_desk", [dummy])])
+        an.vlm.prob([("cashier_at_desk", [dummy])])
+        if aux is not None:
+            aux.choose([("Answer with one letter: A or B.", [dummy], ["A", "B"])])
         state.update(analyzer=an, loaded_at=time.time(),
-                     models={"vlm_backend": backend.name, "vlm": backend.model_id, "detector": det.model_id,
-                             "device": det.device})
+                     models={"vlm_backend": backend.name, "vlm": backend.model_id, "vlm_aux": aux_id or None,
+                             "detector": det.model_id, "device": det.device})
         log.info("models loaded in %.1fs: %s", time.time() - t, state["models"])
     except Exception as e:  # noqa: BLE001
         state["load_error"] = f"{type(e).__name__}: {e}"
@@ -207,11 +214,13 @@ def catalog():
         items.append({"code": v["code"], "category": v["category"], "category_ru": cov["categories"].get(v["category"]),
                       "type_ru": v["type_ru"], "status": c.get("status", "not_detected"), "note": c.get("note"),
                       "clause": ref["clause"] if ref else None, "verified": bool(ref and ref.get("verified"))})
-    for code in ("X01", "X02"):
-        c = cov["codes"][code]
-        ref = norms["refs"][code]
-        items.append({"code": code, "category": "extra", "category_ru": cov["categories"]["extra"], "type_ru": c["type_ru"],
-                      "status": c["status"], "note": c["note"], "clause": ref["clause"], "verified": bool(ref.get("verified"))})
+    for code, c in cov["codes"].items():  # codes beyond the team catalog (X01, X02, X03, ...)
+        if not code.startswith("X"):
+            continue
+        ref = norms["refs"].get(code) or {}
+        cat_key = c.get("category", "extra")
+        items.append({"code": code, "category": cat_key, "category_ru": cov["categories"].get(cat_key), "type_ru": c["type_ru"],
+                      "status": c["status"], "note": c["note"], "clause": ref.get("clause"), "verified": bool(ref.get("verified"))})
     return {"items": items, "categories": cov["categories"], "models": state["models"]}
 
 

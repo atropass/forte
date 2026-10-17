@@ -10,6 +10,7 @@ else
   export HF_HOME="$PWD/weights"
   MODELS=(Qwen/Qwen3-VL-4B-Instruct PekingU/rtdetr_v2_r18vd)
 fi
+if [[ -n "${AUX_MODEL:-}" ]]; then MODELS+=("$AUX_MODEL"); fi   # optional ensemble model (VLM_AUX_MODEL)
 HF=$(command -v hf || command -v huggingface-cli || echo "")
 if [[ -z "$HF" ]]; then pip install -q "huggingface_hub[cli]"; HF=$(command -v hf || command -v huggingface-cli); fi
 for m in "${MODELS[@]}"; do echo "== $m"; "$HF" download "$m" >/dev/null; done

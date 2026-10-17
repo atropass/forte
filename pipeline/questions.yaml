@@ -8,26 +8,39 @@ preamble: >-
 
 questions:
   safe_open:
+    threshold: 0.5
     scope: crop:safe
     text: Is the door of the grey metal safe (the cabinet) open, so that its inside is visible?
   key_in_safe:
+    threshold: 0.7   # the lock is ~3 px; only fire on a very confident answer
     scope: crop:safe
     text: Is a key (or a key with a tag/bunch) sticking out of the lock on the safe door?
   money_on_desk:
+    threshold: 0.4   # recall first: a missed cash bundle is worse than a reviewer check
     scope: crop:desk
     text: Are there banknotes or bundles of cash lying on the desk surface (not inside a machine)?
   bag_on_desk:
+    threshold: 0.5
     scope: crop:desk
     text: Is there a cash-collection bag or sack (fabric bag, often green) lying on the desk?
+  cash_in_machine:
+    threshold: 0.5
+    scope: crop:counting_machine
+    text: >-
+      Are banknotes lying in the counting machine (in its input hopper or output tray), as opposed to an empty
+      machine?
   laptop_on:
+    threshold: 0.5
     scope: crop:laptop
     text: >-
       Does the laptop screen show working content (spreadsheet, documents, application windows)?
       Answer "no" if the screen is black/off, closed, or shows only a lock screen / wallpaper picture.
   door_open:
+    threshold: 0.5
     scope: full
     text: Is the glass entrance door of this room standing open (not closed in its frame)?
   personal_items:
+    threshold: 0.55
     scope: crop:desk
     text: >-
       Are there personal belongings on the desk — handbag, purse, jacket, food, drink cup or bottle?
@@ -36,6 +49,7 @@ questions:
     scope: full
     text: Answer yes if any person is sitting or standing at the cashier working place behind the desk, otherwise no.
   cashier_ready:
+    threshold: 0.6
     scope: full
     text: >-
       A visitor is entering. Answer yes if the cashier is NOT ready to serve: standing, walking, or still

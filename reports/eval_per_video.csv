@@ -1,0 +1,9 @@
+video,label,label_codes,label_tc,pred,pred_codes,verdict_ok,type_ok,tc_err,tc_err_any,timing
+X-1,1,V06,22,0,,0,,,,"{""perception"": 6.3, ""scene_state"": 89.4, ""checks"": 40.7, ""total"": 136.9}"
+X-2,1,V05,10,0,,0,,,,"{""perception"": 20.3, ""scene_state"": 56.0, ""checks"": 41.9, ""total"": 118.6}"
+X-3,0,,,0,,1,,,,"{""perception"": 29.3, ""scene_state"": 81.5, ""checks"": 38.3, ""total"": 150.0}"
+X-4,1,V03,57|68,1,V03@59.5,1,1,2.5,2.5,"{""perception"": 28.0, ""scene_state"": 119.2, ""checks"": 114.6, ""total"": 263.3}"
+X-5,0,,,0,,1,,,,"{""perception"": 26.1, ""scene_state"": 111.3, ""checks"": 107.7, ""total"": 245.4}"
+X-8,0,,,0,,1,,,,"{""perception"": 30.6, ""scene_state"": 200.9, ""checks"": 53.1, ""total"": 285.1}"
+X-10,0,,,0,,1,,,,"{""perception"": 43.6, ""scene_state"": 94.8, ""checks"": 11.9, ""total"": 151.0}"
+X-11,1,X01,18,0,,0,,,,"{""perception"": 34.1, ""scene_state"": 77.2, ""checks"": 57.1, ""total"": 168.8}"
