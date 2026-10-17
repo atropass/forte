@@ -1,7 +1,8 @@
 # CI on every push and pull request: tests, UI typecheck/build, secret scan, and both Docker images built and
 # smoke-tested together (frontend nginx -> api -> Redis). On main the images are pushed to GHCR:
 #   ghcr.io/<owner>/forte-backend:{sha-<short>,latest}, ghcr.io/<owner>/forte-frontend:{sha-<short>,latest}
-# On main, after everything passes, the commit is deployed to Fly.io (fly.toml; needs the repo secret FLY_API_TOKEN).
+# On main, after everything passes, the commit is deployed to the Hetzner server over SSH (deploy job below; secrets
+# HETZNER_SSH_KEY, HETZNER_KNOWN_HOSTS; variables HETZNER_HOST, PUBLIC_DOMAIN, DEPLOY_FREEZE).
 # Third-party actions are pinned to commit SHAs.
 name: CI
 
@@ -122,16 +123,38 @@ jobs:
           done
 
   deploy:
+    # Hetzner server (vars.HETZNER_HOST): the committed tree is streamed over SSH to /opt/forte (the server's .env is
+    # kept) and the stack is rebuilt there; then the public URL must answer /readyz. Pause with vars.DEPLOY_FREEZE=true.
     needs: [images]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.DEPLOY_FREEZE != 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     concurrency:
-      group: fly-deploy   # one deploy at a time; a newer push waits for the running one
+      group: hetzner-deploy   # one deploy at a time; a newer push waits for the running one
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-      - uses: superfly/flyctl-actions/setup-flyctl@fc53c09e1bc3be6f54706524e3b82c4f462f77be  # 1.5
-      - run: flyctl deploy --remote-only
+      - name: ssh key + pinned host key
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.HETZNER_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: deploy
+        env:
+          HOST: ${{ vars.HETZNER_HOST }}
+        run: |
+          SSH="ssh -i $HOME/.ssh/deploy -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes root@$HOST"
+          git archive HEAD | $SSH 'tar -x -C /opt/forte'
+          $SSH 'cd /opt/forte && docker compose --profile tls up -d --build --remove-orphans && docker image prune -f >/dev/null'
+      - name: smoke test
+        env:
+          DOMAIN: ${{ vars.PUBLIC_DOMAIN }}
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf "https://$DOMAIN/readyz?strict=1" && exit 0
+            sleep 10
+          done
+          exit 1

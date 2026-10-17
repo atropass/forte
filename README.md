@@ -20,32 +20,27 @@
 
 | | |
 |---|---|
-| **Веб-интерфейс** | **https://forte-vision.fly.dev** |
-| **API (base URL)** | **https://forte-vision.fly.dev** (маршруты `/api/v1/...`) |
+| **Веб-интерфейс** | **https://95-217-164-246.sslip.io** |
+| **API (base URL)** | **https://95-217-164-246.sslip.io** (маршруты `/api/v1/...`) |
 | Логин и пароль для UI | демо-аккаунты ниже; остальные выдаёт администратор (раздел 1.3), самостоятельной регистрации нет |
 | API-ключ (`X-API-Key`) | выдаёт администратор; жюри получает ключ лично, в репозитории ключей нет |
 | Состояние сервиса | `GET /healthz` (процесс жив), `GET /readyz?strict=1` (готов анализировать: Redis, GPU-серверы, воркеры) |
 
-### Демо-аккаунты (https://forte-vision.fly.dev)
+### Демо-аккаунты (https://95-217-164-246.sslip.io)
 
 | Назначение | Логин | Пароль |
 |---|---|---|
-| Демо / команда | `demo` | `Demo-Forte-7xK2pQ9mW4` |
-| Жюри (веб-интерфейс) | `jury` | `Jury-Forte-3nV8rT5cY1` |
+| Демо / команда | `demo` | `R6ofJK62ZOcwahnat9tWIeuH` |
+| Жюри (веб-интерфейс) | `jury` | `HI0MTzW4SWOdzzkrQTiHE4Yd` |
 
-Репозиторий приватный; если он станет публичным — сменить пароли (`admin reset-password <логин>`). Аккаунты создаются
-на Fly один раз (раздел 1.3):
-
-```bash
-fly ssh console -a forte-vision -C "entrypoint admin create-user demo --password Demo-Forte-7xK2pQ9mW4"
-fly ssh console -a forte-vision -C "entrypoint admin create-user jury --password Jury-Forte-3nV8rT5cY1"
-```
+Репозиторий приватный; если он станет публичным — сменить пароли:
+`ssh root@95.217.164.246 'cd /opt/forte && docker compose run --rm init admin reset-password <логин>'`.
 
 API-ключ жюри в репозиторий не входит — он передаётся лично.
 
 ### Веб-интерфейс
 
-1. Откройте https://forte-vision.fly.dev и войдите (демо-аккаунт выше или логин от администратора).
+1. Откройте https://95-217-164-246.sslip.io и войдите (демо-аккаунт выше или логин от администратора).
 2. Перетащите видео `.mov` / `.mp4` (до 100 МБ) и нажмите «Запустить анализ». Видно этап обработки и позицию
    в очереди.
 3. Результат: вердикт; метки событий на таймлайне видео (клик — перемотка); кадры-доказательства (клик — крупно);
@@ -59,7 +54,7 @@ API-ключ жюри в репозиторий не входит — он пе�
 Два шага, как в ТЗ: загрузить видео → получить `job_id` → опрашивать статус до `done` / `failed`.
 
 ```bash
-BASE=https://forte-vision.fly.dev
+BASE=https://95-217-164-246.sslip.io
 KEY=<ключ>
 
 # 1. загрузка (поле file, .mov)
@@ -86,7 +81,7 @@ Python (`sdk/client.py`, только стандартная библиотек�
 
 ```python
 from sdk.client import ForteVisionClient
-fv = ForteVisionClient("https://forte-vision.fly.dev", api_key="<ключ>")
+fv = ForteVisionClient("https://95-217-164-246.sslip.io", api_key="<ключ>")
 result = fv.analyze_and_wait("video_017.mov", timeout_s=300)   # dict по схеме ТЗ
 ```
 
@@ -139,7 +134,7 @@ result = fv.analyze_and_wait("video_017.mov", timeout_s=300)   # dict по сх�
 | GET | `/api/v1/jobs/{job_id}/details` | события, хронология, тайминги, отладочные оценки проверок |
 | GET | `/api/v1/catalog` | справочник типов нарушений и что проверяется |
 | GET | `/healthz`, `/readyz` | состояние (без ключа) |
-| GET | `/metrics` | метрики Prometheus (`Authorization: Bearer $METRICS_TOKEN`; на Fly не настроено) |
+| GET | `/metrics` | метрики Prometheus (`Authorization: Bearer $METRICS_TOKEN`; снаружи закрыт, только из сети сервера) |
 
 ---
 
@@ -193,28 +188,30 @@ make run                    # UI + API на http://localhost:8000 и ворке�
 
 ## 1. Продакшн
 
-### 1.1 Fly.io (публичный адрес https://forte-vision.fly.dev)
+### 1.1 Сервер Hetzner (публичный адрес https://95-217-164-246.sslip.io)
 
-Одна машина ([fly.toml](fly.toml), [docker/fly.Dockerfile](docker/fly.Dockerfile),
-[docker/fly-start.sh](docker/fly-start.sh)): Redis + API со статическим UI + воркеры, состояние на томе
-`forte_data` (`/data`). Модели — на GPU-подах RunPod. Каждый пуш в `main`, прошедший CI, выкатывается
-автоматически; вручную — `fly deploy --remote-only`.
+| | |
+|---|---|
+| Сервер | Hetzner Cloud, Helsinki, Ubuntu 26.04, 2 vCPU AMD EPYC, 4 GB RAM, 75 GB; `ssh root@95.217.164.246` |
+| Код | `/opt/forte` (дерево коммита из `main`), настройки и секреты — `/opt/forte/.env` (chmod 600, не в git) |
+| Запуск | `docker compose --profile tls up -d --build`: Caddy (80/443, Let's Encrypt) → frontend (nginx) → api, worker ×2, Redis |
+| Адрес | `95-217-164-246.sslip.io` — бесплатное DNS-имя для IP (sslip.io); свой домен: A-запись на IP, `DOMAIN=` и `PUBLIC_ORIGIN=` в `.env` |
+| Защита | ufw: открыты только 22/80/443; fail2ban; порты 8080/8000/6379 снаружи закрыты |
 
 ```bash
-# адреса и токены GPU-серверов + bootstrap-ключ жюри (значения — у администратора, см. GPU_ACCESS.md)
-fly secrets set -a forte-vision API_KEY=<ключ жюри> \
-    VLM_API_BASE=https://<vlm-pod>-8000.proxy.runpod.net/v1 VLM_API_KEY=<токен> \
-    DET_API_BASE=https://<cv-pod>-8000.proxy.runpod.net DET_API_KEY=<токен>
-# учётные записи и дополнительные ключи
-fly ssh console -a forte-vision -C "entrypoint admin create-user jury"
-fly ssh console -a forte-vision -C "entrypoint admin create-api-key --name jury2"
-fly logs -a forte-vision
+ssh root@95.217.164.246
+cd /opt/forte
+docker compose --profile tls ps                         # состояние
+docker compose logs -f api worker                       # логи
+docker compose run --rm init admin create-user <логин>  # учётные записи и ключи (раздел 1.3)
+docker compose --profile tls up -d --build              # пересборка после ручного обновления кода
 ```
 
-**Размер машины:** сейчас `shared-cpu-1x` / 1 GB — этого хватает для одиночных проверок, но не для нагрузки жюри:
-перед анализом видео декодируется на CPU, и при 5 одновременных видео задания ждут CPU (измерено: до 234 с на видео,
-GPU простаивают). Перед проверкой жюри: `fly scale vm shared-cpu-4x --memory 4096 -a forte-vision` и затем
-`make loadtest URL=https://forte-vision.fly.dev KEY=… BURST=5`. Цель — все видео < 300 с от загрузки до результата.
+Деплой автоматический: каждый пуш в `main`, прошедший CI, выкатывается на сервер (раздел 1.4). Ключ жюри задан в
+`.env` как `API_KEYS=…`; GPU-серверы — `VLM_API_BASE`/`VLM_API_KEY`, `DET_API_BASE`/`DET_API_KEY` (см. GPU_ACCESS.md).
+Проверка на 5 одновременных видео (2026-10-18): все `done` за ≤ 80 с, результаты совпадают с эталонным прогоном.
+
+Файлы Fly.io (`fly.toml`, `docker/fly.Dockerfile`, `docker/fly-start.sh`) оставлены как альтернатива, но не используются.
 
 ### 1.2 Docker Compose (любой хост, в т. ч. инфраструктура банка)
 
@@ -241,8 +238,8 @@ curl http://localhost:8080/readyz
 ### 1.3 Учётные записи и ключи
 
 Самостоятельной регистрации нет — доступ выдаёт администратор. Команда та же везде, меняется только префикс:
-локально `make admin ARGS="…"`, в Docker `docker compose run --rm init admin …`, на Fly
-`fly ssh console -a forte-vision -C "entrypoint admin …"`.
+локально `make admin ARGS="…"`, в Docker `docker compose run --rm init admin …`, на сервере
+`ssh root@95.217.164.246 'cd /opt/forte && docker compose run --rm init admin …'`.
 
 ```bash
 admin create-user <логин> [--password …]      # без --password пароль генерируется и выводится один раз
@@ -255,7 +252,7 @@ admin revoke-api-key jury                     # действует сразу, �
 admin purge --older-than-days 30              # результаты и логи старше N дней
 ```
 
-Ключи из переменных `API_KEY` / `API_KEYS` принимаются как bootstrap-ключи (на Fly ключ жюри задан так).
+Ключи из переменных `API_KEY` / `API_KEYS` принимаются как bootstrap-ключи (на сервере ключ жюри задан так).
 Ключи и пароли передаются лично, не через репозиторий и не в общих чатах.
 
 ### 1.4 CI/CD
@@ -263,8 +260,16 @@ admin purge --older-than-days 30              # результаты и логи
 [.github/workflows/ci.yml](.github/workflows/ci.yml) на каждый пуш и PR: тесты, typecheck и сборка UI, проверка
 секретов (gitleaks), сборка обоих Docker-образов и смоук-тест стека. Из `main`: образы публикуются в GHCR
 (`ghcr.io/atropass/forte-backend`, `ghcr.io/atropass/forte-frontend`, теги `sha-<коммит>` и `latest`), затем
-деплой на Fly.io (секрет репозитория `FLY_API_TOKEN`). Для своего сервера: `REGISTRY=ghcr.io/atropass`,
-`IMAGE_TAG=sha-<коммит>` в `.env`, `docker compose pull && docker compose up -d --no-build`.
+**деплой на сервер Hetzner по SSH**: дерево коммита → `/opt/forte` (`.env` сервера сохраняется) →
+`docker compose --profile tls up -d --build` → проверка `https://<домен>/readyz?strict=1`.
+
+| GitHub | Имя | Значение |
+|---|---|---|
+| secret | `HETZNER_SSH_KEY` | отдельный ключ деплоя (только для CI; отзыв — удалить строку `github-actions-deploy@forte` из `/root/.ssh/authorized_keys`) |
+| secret | `HETZNER_KNOWN_HOSTS` | закреплённый ключ хоста сервера (защита от подмены) |
+| variable | `HETZNER_HOST` | `95.217.164.246` |
+| variable | `PUBLIC_DOMAIN` | `95-217-164-246.sslip.io` |
+| variable | `DEPLOY_FREEZE` | `true` — остановить автодеплой (на время проверки жюри) |
 
 ### 1.5 GPU-серверы
 

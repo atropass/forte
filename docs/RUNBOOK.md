@@ -2,13 +2,13 @@
 
 Two deployments, same commands with a different prefix:
 
-| | Public (Fly.io) | Docker Compose (any host) |
+| | Public server (Hetzner, `ssh root@95.217.164.246`, `cd /opt/forte`) | Docker Compose elsewhere |
 |---|---|---|
-| URL | https://forte-vision.fly.dev | `http://<host>:8080` (frontend nginx) |
-| Admin CLI | `fly ssh console -a forte-vision -C "entrypoint admin …"` | `docker compose run --rm init admin …` |
-| Logs | `fly logs -a forte-vision` | `docker compose logs -f api worker` |
-| Restart | `fly machine restart -a forte-vision` | `docker compose restart api worker` |
-| Redis data | `/data/redis` on the `forte_data` volume | `redis-data` volume |
+| URL | https://95-217-164-246.sslip.io (Caddy, Let's Encrypt) | `http://<host>:8080` (frontend nginx) |
+| Admin CLI | `docker compose run --rm init admin …` | same |
+| Logs | `docker compose logs -f api worker caddy` | `docker compose logs -f api worker` |
+| Restart | `docker compose --profile tls restart api worker` | `docker compose restart api worker` |
+| Redis data | `redis-data` volume | `redis-data` volume |
 
 ## Health at a glance
 ```bash
@@ -24,11 +24,12 @@ Uptime monitoring: point an external monitor at `/readyz?strict=1` (fails when n
 unreachable) and alert after 2 consecutive failures.
 
 ## Before / during the jury evaluation
-1. Freeze: every push to `main` deploys to Fly (CI) — do not push to `main` during the evaluation (Compose: pin
-   `IMAGE_TAG` to the tested `sha-…`).
-1. Fly machine size: at least `fly scale vm shared-cpu-4x --memory 4096 -a forte-vision`. On `shared-cpu-1x` / 1 GB
-   the CPU (video decoding) is the bottleneck: 5 simultaneous videos took up to 234 s each while the GPUs idled.
-   Then `make loadtest URL=https://forte-vision.fly.dev KEY=<jury key> BURST=5`: every video < 300 s.
+1. Freeze: every push to `main` deploys to the server (CI) — set the repository variable `DEPLOY_FREEZE=true` for the
+   evaluation window.
+1. Capacity: the server has 2 vCPU / 4 GB; 5 simultaneous videos finished in ≤ 80 s each (2026-10-18). The CPU
+   (video decoding) is the first bottleneck: if the GPUs idle while jobs queue, resize the server (Hetzner: more
+   vCPU) and raise `WORKER_COUNT` in `/opt/forte/.env`. Check with
+   `make loadtest URL=https://95-217-164-246.sslip.io KEY=<jury key> BURST=5`: every video < 300 s.
 2. `curl /readyz?strict=1` → 200, `calibration.model_match` true, no warnings.
 3. One end-to-end check: `python sdk/client.py`-style call or `make eval-api URL=… KEY=… ` with one video.
 4. Watch `fv_queue_depth` and `fv_job_errors` during the run.
@@ -39,13 +40,12 @@ unreachable) and alert after 2 consecutive failures.
   The watchdog restarts a hung vLLM / CV service automatically after 3 failed health checks.
 * Pod gone: create a new pod and set it up with GPU_ACCESS.md → "New vLLM pod from scratch" / "New CV pod from
   scratch" (pods have no git checkout; ~10 min), then update `VLM_API_BASE`/`VLM_API_KEY` or
-  `DET_API_BASE`/`DET_API_KEY` (Fly: `fly secrets set …`, restarts the machine; Compose: `.env` +
-  `docker compose up -d api worker`).
+  `DET_API_BASE`/`DET_API_KEY` in `/opt/forte/.env`, then `docker compose --profile tls up -d api worker`.
 * CV pod down, quick fallback: the vLLM pod runs a copy of the CV service at `/cv/`
   (`DET_API_BASE=https://<vlm-pod>-8000.proxy.runpod.net/cv` with that pod's `CV_API_KEY`).
 
 ## Queue is backing up (`fv_queue_depth` grows, queue wait > 60 s)
-* Check that workers are alive (`/readyz` → `workers`). Restart: `docker compose restart worker` / `fly machine restart`.
+* Check that workers are alive (`/readyz` → `workers`). Restart: `docker compose restart worker`.
 * Check where the time goes: if the GPU servers are idle (`nvidia-smi` on the pods) while jobs queue, the service host's
   CPU is the bottleneck (video decoding) — scale the host up, not `WORKER_COUNT`.
 * Add capacity: raise `WORKER_COUNT` (watch per-job processing time: the single GPU is shared; past a point more
@@ -64,7 +64,7 @@ admin revoke-api-key jury
 admin create-user <user>                  # password printed once
 admin reset-password <user>
 ```
-On Fly the jury key can also be the `API_KEY` secret (`fly secrets set API_KEY=… -a forte-vision`).
+On the server the jury key is `API_KEYS=…` in `/opt/forte/.env` (change it, then `docker compose --profile tls up -d api`).
 Rotate GPU tokens: see GPU_ACCESS.md → "Redeploy / rotate keys".
 
 ## Redis
@@ -78,7 +78,8 @@ Rotate GPU tokens: see GPU_ACCESS.md → "Redeploy / rotate keys".
 
 ## Deploys
 * Workers finish running jobs on SIGTERM (`stop_grace_period: 330s`).
-* Fly: every push to `main` deploys after CI; by hand `fly deploy --remote-only`. Rollback: `fly releases -a
-  forte-vision --image` → `fly deploy -a forte-vision --image <previous image>`.
+* Server: every push to `main` deploys after CI (job `deploy`). By hand from a clone:
+  `git archive HEAD | ssh root@95.217.164.246 'tar -x -C /opt/forte' && ssh root@95.217.164.246 'cd /opt/forte && docker compose --profile tls up -d --build'`.
+  Rollback: the same with `git archive <previous commit>`.
 * Compose: set `IMAGE_TAG=sha-<commit>` in `.env`, `docker compose pull && docker compose up -d --no-build`.
   Rollback: the previous `IMAGE_TAG`, same commands.
