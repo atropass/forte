@@ -1,0 +1,36 @@
+# ForteVision AI — Python dependencies (Python 3.11+).
+#   pip install -r requirements.txt
+# Covers: the service (FastAPI), the pipeline (detector, rules), the OpenAI-compatible client for our
+# vLLM server (VLM_BACKEND=openai), evaluation/calibration scripts and tests.
+# Docker image with in-container vLLM uses requirements-service.txt on top of the vllm base image.
+
+# --- service
+fastapi==0.143.3
+uvicorn[standard]==0.54.0
+python-multipart==0.0.32
+httpx==0.28.1
+jsonschema==4.26.0
+PyYAML==6.0.3
+
+# --- pipeline: frames, person detector (RT-DETRv2, Apache-2.0), images
+numpy==2.5.4
+pillow==13.0.0
+torch==2.14.1
+torchvision==0.29.1
+transformers==5.20.1
+huggingface_hub==2.2.0
+safetensors==0.8.0
+
+# --- local VLM on Apple silicon (VLM_BACKEND=mlx); skipped on other platforms
+mlx==0.32.4; sys_platform == "darwin" and platform_machine == "arm64"
+mlx-vlm==0.7.8; sys_platform == "darwin" and platform_machine == "arm64"
+
+# --- data audit, key-classifier experiment, tests
+openpyxl==3.1.5
+pandas==3.0.6
+scikit-learn==1.9.1
+scikit-image==0.26.0
+joblib==1.6.0
+pytest==9.1.1
+
+# System dependency (not pip): ffmpeg / ffprobe on PATH  (brew install ffmpeg / apt-get install ffmpeg)

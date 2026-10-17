@@ -112,7 +112,7 @@ docker compose run --rm backend python3 scripts/bench.py
 ## 2. Локальный запуск на Mac (Apple silicon, MLX) — разработка/демо
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements-mac.txt
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ```
 ```bash
 scripts/download_weights.sh --mac
