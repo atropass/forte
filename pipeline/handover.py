@@ -17,11 +17,11 @@ Decision (decide_episode):
   * first_cash = onset of C or F (high, confirmed within the next 2 frames) -> money changes hands
     (п.19 пп.1 for acceptance and п.31 пп.1 for disbursement both require the ID check first)
   * first_bag  = onset of D, same rule -> bag handed over (V13 timecode)
-  * id_seen    = A+B+E high on >= 2 frames before (or at) the first handover
+  * id_seen    = A+B+E high on >= 2 frames anywhere in the episode (see note in decide_episode)
   * bag first and no id_seen  -> collector_no_id (V13)
   * cash first and no id_seen -> client_no_id (V05)
   * F has >= 2 separate onsets (a gap of >= GAP_S without F between them) -> partial_at = 2nd onset (X03)
-Evidence of ID anywhere before the handover suppresses V05 (false alarms on clean client episodes are
+Evidence of ID anywhere in the episode suppresses V05 (false alarms on clean client episodes are
 costly: 6 clean training videos contain client episodes).
 """
 from __future__ import annotations
@@ -36,11 +36,11 @@ PROMPT = (
     "Which ONE statement best describes what is happening in this frame?\n"
     "A) the visitor hands over or holds out a small card or ID document\n"
     "B) the visitor shows a phone screen to the cashier\n"
-    "C) the visitor hands banknotes to the cashier, or banknotes are put on the desk or into the counting machine\n"
+    "C) right now a hand is passing banknotes from the visitor to the cashier (money lying still on the desk does not count)\n"
     "D) a bag or sack is handed over\n"
     "E) the cashier holds a small card or document and looks at it\n"
-    "F) the cashier hands banknotes to the visitor\n"
-    "G) none of these\n"
+    "F) right now the cashier's hand is passing banknotes to the visitor\n"
+    "G) nothing is being handed over right now (people sit, talk, write, count or use the machine)\n"
     "Answer with exactly one letter."
 )
 
@@ -71,8 +71,12 @@ class EpisodeResult:
     trace: list = field(default_factory=list)
 
 
-def episode_times(t0: float, t_end: float | None, duration: float) -> list[float]:
-    end = min(t_end if t_end is not None else duration, t0 + MAX_WINDOW, duration - 0.1)
+def episode_times(t0: float, t_end: float | None, duration: float, seated_from: float | None = None) -> list[float]:
+    """Frames of a visitor episode. Starts when the visitor is at the desk (scene state), not at the door:
+    while walking in nothing can be handed over, and the model mislabels those frames."""
+    end = min(t_end if t_end is not None else duration, t0 + MAX_WINDOW + 3.0, duration - 0.1)
+    if seated_from is not None and t0 <= seated_from < end:
+        t0 = seated_from
     n = max(0, int((end - t0) / STEP) + 1)
     return [round(t0 + i * STEP, 2) for i in range(n)]
 
@@ -126,10 +130,12 @@ def decide_episode(times: list[float], probs: list[dict[str, float]], id_thr: fl
     bag_first = ib is not None and (ic is None or ib <= ic)
     i_hand = ib if bag_first else ic
     assert i_hand is not None
-    before = idp[: i_hand + 1]  # ID shown at the same moment as the hand-over still counts
-    strong = [i for i, v in enumerate(before) if v >= id_thr]
+    # The model cannot order hand-overs to the second (it labels a visitor sitting down as "cash" and keeps
+    # "ID" for many frames), so ID evidence ANYWHERE in the episode clears it: a false alarm on a clean client
+    # is worse than missing a doubtful case (FAQ #16 + 6 clean client videos in training).
+    strong = [i for i, v in enumerate(idp) if v >= id_thr]
     id_seen = len(strong) >= ID_MIN_FRAMES
-    conf = round(1.0 - (max(before) if before else 0.0), 2)
+    conf = round(1.0 - (max(idp) if idp else 0.0), 2)
     res = EpisodeResult(None, times[i_hand], conf, times[strong[0]] if strong else None, **base)
     if not id_seen:
         res.kind = "collector_no_id" if bag_first else "client_no_id"

@@ -88,7 +88,8 @@ def rule_enabled(rid: str, rule: dict) -> bool:
     return True
 
 
-def plan(events: list[Event], duration: float) -> list[Check]:
+def plan(events: list[Event], duration: float, visitor_at_desk: list[float] | None = None) -> list[Check]:
+    """visitor_at_desk: scene-state times at which a visitor is at the desk (episode frames start there)."""
     CHECK_BASE.clear()
     EPISODE_END.clear()
     trig = expand_triggers(events, duration)
@@ -101,7 +102,10 @@ def plan(events: list[Event], duration: float) -> list[Check]:
                 for c in rule.get("checks", []):
                     q = c["q"]
                     if q == "handover_sequence":
-                        times = handover.episode_times(t0, EPISODE_END.get(round(t0, 2)), duration)
+                        end = EPISODE_END.get(round(t0, 2))
+                        at_desk = [t for t in (visitor_at_desk or []) if t >= t0 and (end is None or t < end)]
+                        seated = at_desk[0] if at_desk else t0 + 2.0
+                        times = handover.episode_times(t0, end, duration, seated_from=seated)
                         checks.append(Check(rid, q, t0, times, min_yes=0))
                     elif q == "open_check":
                         checks.append(Check(rid, q, t0, [min(CHECK_BASE.get(round(t0, 2), t0) + 1.0, duration - 0.1)],

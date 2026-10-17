@@ -37,7 +37,7 @@ questions:
       Answer "no" if the screen is black/off, closed, or shows only a lock screen / wallpaper picture.
   door_open:
     threshold: 0.5
-    scope: full
+    scope: crop:door
     text: Is the glass entrance door of this room standing open (not closed in its frame)?
   personal_items:
     threshold: 0.55

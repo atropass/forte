@@ -49,9 +49,10 @@ def test_single_flicker_is_not_a_handover():
     assert handover.decide_episode(t, p).kind is None
 
 
-def test_id_after_money_does_not_excuse():
+def test_id_anywhere_in_episode_clears_v05():
+    # the model's per-frame ordering is unreliable (X-48: "cash" while the client sits down, then ID)
     t, p = frames(list("GCCCGAAA"))
-    assert handover.decide_episode(t, p).kind == "client_no_id"
+    assert handover.decide_episode(t, p).kind is None
 
 
 def test_votes_two_of_three_or_mean():
@@ -66,7 +67,7 @@ def test_handover_rule_fires_once_per_matching_kind():
     ev = [Event("visitor_arrived", 2.0), Event("visitor_left", 20.0, info={"occupancy": 1})]
     checks = [c for c in plan(ev, 30.0) if c.question == "handover_sequence"]
     assert {c.rule for c in checks} == {"client_no_id", "collector_no_id"}
-    assert checks[0].times[0] == 2.0 and checks[0].times[-1] <= 20.0
+    assert checks[0].times[0] == 4.0 and checks[0].times[-1] <= 20.0  # starts when the visitor is at the desk
     t, p = frames(list("GGGGCCCC"))
     res = handover.decide_episode(t, p)
     for c in checks:

@@ -151,7 +151,7 @@ class Analyzer:
 
         prog("checks", 0.60)
         t2 = time.time()
-        checks = plan(events, info.duration)
+        checks = plan(events, info.duration, visitor_at_desk=[x.t for x in states if x.visitor])
         self._answer(path, checks, scene_boxes)
         timing["checks"] = round(time.time() - t2, 1)
 

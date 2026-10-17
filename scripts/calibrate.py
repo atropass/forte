@@ -39,14 +39,16 @@ def video_path(vid: str) -> Path:
 
 
 def best_threshold(pos: list[float], neg: list[float]) -> tuple[float, float, float, float]:
-    best = None
+    """Best balanced accuracy; among equally good thresholds take the MIDDLE of that range (a peaked model
+    gives the same accuracy for 0.15..0.85, and an edge value would be fragile on unseen footage)."""
+    rows = []
     for thr in GRID:
-        tpr = np.mean([p >= thr for p in pos]) if pos else 1.0
-        tnr = np.mean([p < thr for p in neg]) if neg else 1.0
-        bal = (tpr + tnr) / 2
-        if best is None or bal > best[1] + 1e-9:
-            best = (thr, bal, tpr, tnr)
-    return best
+        tpr = float(np.mean([p >= thr for p in pos])) if pos else 1.0
+        tnr = float(np.mean([p < thr for p in neg])) if neg else 1.0
+        rows.append((thr, (tpr + tnr) / 2, tpr, tnr))
+    top = max(r[1] for r in rows)
+    best = [r for r in rows if r[1] >= top - 1e-9]
+    return best[len(best) // 2]
 
 
 def main():
@@ -64,8 +66,8 @@ def main():
     out, lines = {}, ["# Threshold calibration", "", f"Model: `{vlm.backend.model_id}` ({vlm.backend.name})", "",
                       "| question | threshold | balanced acc | recall | specificity | n+ / n- |", "|---|---|---|---|---|---|"]
     for qid, labs in items.items():
-        if qid in ("id_shown", "bag_handover", "banknote_manual_check"):
-            continue  # multi-frame questions are replaced by the hand-over sequence analysis
+        if qid in ("id_shown", "bag_handover", "banknote_manual_check", "key_in_safe"):
+            continue  # replaced by the hand-over sequence analysis / key: invisible (3 px), keep the strict default
         batch, ys = [], []
         for expected, lst in labs.items():
             y = {True: 1, False: 0, "yes": 1, "no": 0}[expected]
@@ -96,7 +98,7 @@ def main():
             ok = [r.kind == e["expected"] for r, e in zip(res, eps)]
             caught = sum(r.kind == e["expected"] for r, e in zip(res, eps) if e["expected"])
             fp = sum(r.kind is not None for r, e in zip(res, eps) if not e["expected"])
-            score = (sum(ok), caught, -fp, -id_thr)
+            score = (sum(ok), caught, -fp, -abs(id_thr - 0.5))
             if best is None or score > best[0]:
                 best = (score, id_thr, act_thr, res)
     (score, id_thr, act_thr, res) = best
