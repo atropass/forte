@@ -4,7 +4,7 @@
 * a worker that dies is restarted (with backoff);
 * SIGTERM/SIGINT -> warm shutdown: running jobs finish (up to JOB_TIMEOUT_S), then exit;
 * WORKER_MAX_JOBS > 0 recycles a worker after that many jobs.
-In Kubernetes/compose you can also run WORKER_COUNT=1 per container and scale replicas instead.
+You can also run WORKER_COUNT=1 per container and scale the number of containers instead.
 """
 from __future__ import annotations
 

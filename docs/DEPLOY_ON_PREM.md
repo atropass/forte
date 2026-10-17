@@ -4,8 +4,8 @@ The service needs only standard components; nothing is tied to a cloud vendor.
 
 | Component | Default (docker-compose.yml) | In a bank |
 |---|---|---|
-| API | `forte-vision` image, role `api` (stateless, port 8000) | Deployment behind the internal load balancer / ingress with TLS |
-| Workers | same image, role `worker` (`WORKER_COUNT` processes per container) | Deployment, scaled by replicas |
+| API | `forte-vision` image, role `api` (stateless, port 8000) | behind the internal load balancer / reverse proxy with TLS, any number of instances |
+| Workers | same image, role `worker` (`WORKER_COUNT` processes per container) | scaled by processes or containers |
 | Queue + state | Redis 7 with AOF | managed Redis / Sentinel (`REDIS_URL`, `rediss://` supported) |
 | Object storage | MinIO | Ceph RGW / any S3 API (`S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_SSE`) |
 | VLM | vLLM + Qwen3-VL-4B on a GPU server | on-prem GPU server (24 GB+), `VLM_API_BASE`, `VLM_API_KEY` |
@@ -22,17 +22,12 @@ Everything is environment variables (see `.env.example`); secrets come from the 
 Minimum: `REDIS_URL`, `STORAGE_BACKEND=s3` + `S3_*`, `PUBLIC_ORIGIN`, `VLM_API_BASE`/`VLM_API_KEY`,
 `DET_API_BASE`/`DET_API_KEY`, `METRICS_TOKEN`.
 
-## Kubernetes
-Reference manifests: `deploy/k8s/` (kustomize). Probes: liveness `GET /healthz`, readiness `GET /readyz`; worker
-liveness `python -m service.worker_main check`; `terminationGracePeriodSeconds: 330` for workers so running analyses
-finish during rollouts. Pods run as uid 10001 with a read-only root filesystem (`/tmp` as `emptyDir`).
-
-```bash
-kubectl create namespace forte-vision
-kubectl -n forte-vision create secret generic forte-vision --from-env-file=prod.env
-kubectl apply -k deploy/k8s
-kubectl -n forte-vision exec deploy/forte-api -- python -m service.admin create-api-key --name jury
-```
+## Health checks and shutdown
+* API: liveness `GET /healthz`, readiness `GET /readyz`.
+* Workers: `python -m service.worker_main check` (Redis reachable, a worker of this host registered).
+* Give workers a stop grace period of 330 s, so running analyses finish during restarts and rollouts.
+* Containers run as uid 10001 and work with a read-only root filesystem (writable `/tmp` only), as in
+  `docker-compose.yml`.
 
 ## Integration
 Any system can call the public API (`POST /api/v1/analyze`, `GET /api/v1/jobs/{id}`) with an API key; see the

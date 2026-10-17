@@ -1,5 +1,5 @@
 # Fly.io is one possible host. It runs the image in single-host mode ("allinone": Redis + API + workers under
-# supervisord, state on the /data volume). For multi-host deployments use docker-compose.yml / deploy/k8s.
+# supervisord, state on the /data volume). For multi-host deployments use docker-compose.yml.
 #
 # Secrets (never in this file):
 #   fly secrets set -a forte-vision VLM_API_BASE=... VLM_API_KEY=... DET_API_BASE=... DET_API_KEY=... METRICS_TOKEN=...

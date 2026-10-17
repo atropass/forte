@@ -1,4 +1,4 @@
-# Production reference stack (any Docker host; maps 1:1 to Kubernetes, see deploy/k8s):
+# Production reference stack (any Docker host):
 #   api ×1 (WEB_CONCURRENCY processes)  +  worker (WORKER_COUNT processes)  +  Redis (AOF)  +  MinIO (S3 API)
 # The GPU models run on separate GPU servers (VLM_API_BASE / DET_API_BASE in .env).
 #
