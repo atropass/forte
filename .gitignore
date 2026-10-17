@@ -16,3 +16,5 @@ cache/
 reports/feasibility/fail/
 reports/feasibility/grounding/
 reports/feasibility/lock_patches/
+models/
+reports/eval/results/

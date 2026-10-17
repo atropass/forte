@@ -14,9 +14,14 @@ from .timeline import Event
 
 RULES = yaml.safe_load((Path(__file__).parent / "rules.yaml").read_text())["types"]
 
-PERIODIC_STEP = 10.0  # seconds between periodic workplace checks
+PERIODIC_STEP = 5.0  # seconds between periodic workplace checks
 HANDOVER_WINDOW = (2.0, 14.0)  # seconds after a visitor arrives in which the first handover is searched
 HANDOVER_FRAMES = 6
+
+
+# for cashier_left triggers, check frames are taken relative to the moment the room is empty (the cashier
+# is out of the picture), while the timecode stays at the leave start
+CHECK_BASE: dict[float, float] = {}
 
 
 @dataclass
@@ -38,14 +43,17 @@ def _triggers(rule: dict) -> list[str]:
 
 
 def expand_triggers(events: list[Event], duration: float) -> dict[str, list[float]]:
-    """Map trigger names used in rules.yaml to lists of trigger times."""
+    """Map trigger names used in rules.yaml to lists of trigger times (timecodes)."""
     trig: dict[str, list[float]] = {k: [] for k in (
         "cashier_left", "cashier_entered", "visitor_arrived", "second_visitor",
-        "visitor_arrived_after_visitor", "visitor_episode", "periodic")}
+        "visitor_arrived_after_visitor", "visitor_episode", "periodic", "cashier_absent_with_visitor")}
     n_visitors = 0
     for e in events:
-        if e.kind == "cashier_left":
+        if e.kind == "cashier_absent_with_visitor":
+            trig["cashier_absent_with_visitor"].append(e.t)
+        elif e.kind == "cashier_left":
             trig["cashier_left"].append(e.t)
+            CHECK_BASE[round(e.t, 2)] = e.info.get("t_room_empty", e.t)
         elif e.kind == "cashier_entered":
             trig["cashier_entered"].append(e.t)
         elif e.kind in ("visitor_arrived", "second_visitor"):
@@ -65,6 +73,7 @@ def expand_triggers(events: list[Event], duration: float) -> dict[str, list[floa
 
 
 def plan(events: list[Event], duration: float) -> list[Check]:
+    CHECK_BASE.clear()
     trig = expand_triggers(events, duration)
     checks: list[Check] = []
     for rid, rule in RULES.items():
@@ -85,7 +94,11 @@ def plan(events: list[Event], duration: float) -> list[Check]:
                         offs = c.get("offsets", [0.0])
                         if tname == "periodic":
                             offs = [0.0]  # periodic checks: one frame each, voting across neighbours
-                        times = [min(max(0.0, t0 + o), duration - 0.1) for o in offs]
+                        base = t0
+                        if tname == "cashier_left":
+                            base = CHECK_BASE.get(round(t0, 2), t0)
+                            offs = [0.5, 1.5, 2.5]
+                        times = [min(max(0.0, base + o), duration - 0.1) for o in offs]
                         if tname == "periodic":
                             checks.append(Check(rid, q, t0, times, min_yes=1, periodic=True))
                         else:
@@ -111,7 +124,8 @@ class Violation:
     extra: dict = field(default_factory=dict)
 
 
-def decide(checks: list[Check], periodic_min_consecutive: int = 2) -> list[Violation]:
+def decide(checks: list[Check], periodic_min_consecutive: int = 2, seated_at=None) -> list[Violation]:
+    """seated_at(t) -> bool | None: cashier seated at that time (from the scene-state pass)."""
     out: list[Violation] = []
     periodic_hits: dict[str, list[Check]] = {}
     for c in checks:
@@ -139,11 +153,15 @@ def decide(checks: list[Check], periodic_min_consecutive: int = 2) -> list[Viola
             continue
         yes = sum(1 for a in c.answers if getattr(a, "answer", None) == "yes")
         if c.periodic:
+            gate = RULES[c.rule].get("periodic_requires_seated", False)
+            if gate and seated_at is not None and not seated_at(c.trigger_t):
+                continue
             if yes:
                 periodic_hits.setdefault(c.rule, []).append(c)
             continue
         if yes >= c.min_yes:
-            v = _mk(c, rule, tc, c.times, yes / len(c.times), "detector+vlm")
+            ev_times = [tc] + [t for t in c.times if abs(t - tc) > 0.3][:2]  # the moment itself + confirming frames
+            v = _mk(c, rule, tc, ev_times, yes / len(c.times), "detector+vlm")
             v.extra["vlm_evidence"] = next((a.evidence for a in c.answers if a.answer == "yes"), "")
             out.append(v)
     # periodic rules need >= N consecutive positive checks (two independent frames 10 s apart)

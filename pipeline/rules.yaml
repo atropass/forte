@@ -22,8 +22,8 @@ types:
     code: V02
     type: Оставление рабочего места кассиром во время обслуживания клиента
     subtype: Кассир покинул рабочее место при клиенте
-    trigger: periodic
-    checks: [{q: cashier_absent_with_visitor, offsets: [0.0], min_yes: 1}]
+    trigger: cashier_absent_with_visitor
+    checks: []   # from the scene-state pass: visitor at desk + cashier seat empty, 2 consecutive samples
     timecode_offset: 0
     observed: "На {t} с посетитель находится у стола кассира, а кассир отсутствует на рабочем месте."
     reason: "Кассовому работнику не допускается покидать рабочее место до окончания обслуживания клиента."
@@ -56,6 +56,7 @@ types:
     subtype: Сейф оставлен открытым
     trigger: [cashier_left, periodic]
     checks: [{q: safe_open, offsets: [2.5, 3.5, 4.5], min_yes: 2}]
+    periodic_requires_seated: true   # periodic hits count only while the cashier sits at the desk, away from the safe
     timecode_offset: 0
     observed: "На {t} с дверца сейфа открыта, при этом кассир находится не у сейфа."
     reason: "Устройство для хранения наличных денег должно быть закрыто на ключ."

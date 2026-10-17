@@ -75,6 +75,15 @@ presence:
     physically INSIDE this room? Do not count people seen through the glass wall in the corridor, or
     reflections. Reply JSON only: {"inside": <int>, "evidence": "<max 12 words>"}
 
+state:
+  scope: full
+  text: >-
+    Frame from a ceiling camera in a bank cash room with a glass wall and glass door. How many people are
+    physically INSIDE this room? Do not count people seen through the glass wall in the corridor, or
+    reflections. Also: is someone sitting on the cashier's chair at the desk, and is a second person
+    (client/visitor) at the desk? Reply JSON only:
+    {"inside": <int>, "evidence": "<max 12 words>", "cashier_seated": true|false, "visitor_at_desk": true|false}
+
 open_check:
   scope: full
   text: >-
