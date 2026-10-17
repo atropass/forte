@@ -96,3 +96,99 @@ class VLLMClient:
                 return resp.status == 200
         except Exception:
             return False
+
+
+class CVClient:
+    """Production Python Client for ForteVision Computer Vision Microservice (RT-DETRv2 & Tracking)."""
+
+    def __init__(
+        self,
+        base_url: str = "https://ydfg26qe73blrr-8000.proxy.runpod.net",
+        api_key: str = "fv-prod-secret-forte-2026",
+        timeout: float = 30.0,
+    ):
+        self.base_url = base_url.rstrip("/")
+        self.api_key = api_key
+        self.timeout = timeout
+
+    def _post(self, path: str, payload: dict) -> dict:
+        url = f"{self.base_url}{path}"
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.api_key}",
+                "User-Agent": "ForteVision-CV-Client/1.0",
+            },
+        )
+        for attempt in range(3):
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except urllib.error.HTTPError as e:
+                err_body = e.read().decode("utf-8", errors="ignore")
+                raise RuntimeError(f"HTTP {e.code}: {err_body}") from e
+            except Exception as e:
+                if attempt == 2:
+                    raise
+                time.sleep(1.0 * (attempt + 1))
+        raise RuntimeError("Request failed after retries")
+
+    def health(self) -> dict:
+        """Check status, readiness, device, and supported COCO classes."""
+        req = urllib.request.Request(
+            f"{self.base_url}/health",
+            headers={"User-Agent": "ForteVision-CV-Client/1.0"},
+        )
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
+    def detect(
+        self,
+        image: str | Path,
+        threshold: float | None = None,
+        classes: list[str] | None = None,
+    ) -> dict:
+        """Run RT-DETRv2 object detection on a local file, base64 string, or remote image URL.
+
+        Returns:
+            dict with 'elapsed_ms' and list of 'detections' (label, confidence, box: [x1, y1, x2, y2]).
+        """
+        payload: dict = {}
+        if threshold is not None:
+            payload["threshold"] = threshold
+        if classes:
+            payload["classes"] = classes
+
+        str_img = str(image)
+        if str_img.startswith(("http://", "https://")):
+            payload["url"] = str_img
+        elif Path(str_img).exists():
+            raw_bytes = Path(str_img).read_bytes()
+            payload["image_base64"] = base64.b64encode(raw_bytes).decode("utf-8")
+        else:
+            payload["image_base64"] = str_img
+
+        return self._post("/detect", payload)
+
+    def track(
+        self,
+        frames: list[dict],
+        iou_threshold: float = 0.25,
+        max_misses: int = 4,
+    ) -> dict:
+        """Run ByteTrack-style IoU multi-object tracking across video frames.
+
+        Args:
+            frames: list of dicts with 'frame_index' (int) and 'person_boxes' (list of [x1, y1, x2, y2]).
+            iou_threshold: minimum IoU overlap to associate tracks across frames.
+            max_misses: maximum consecutive missing frames before retiring track.
+        """
+        payload = {
+            "frames": frames,
+            "iou_threshold": iou_threshold,
+            "max_misses": max_misses,
+        }
+        return self._post("/track", payload)
