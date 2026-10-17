@@ -10,6 +10,7 @@ fastapi>=0.110
 uvicorn[standard]>=0.29
 python-multipart>=0.0.9      # multipart uploads (UploadFile)
 httpx>=0.27                  # client for the vLLM OpenAI-compatible API
+boto3>=1.28                  # report archive in S3-compatible storage (Tigris), only when BUCKET_NAME is set
 jsonschema>=4.0
 PyYAML>=6.0
 
