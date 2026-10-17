@@ -120,3 +120,10 @@ def test_not_ready_rule_needs_cashier_not_seated():
     c.answers = [Answer("yes", "", "", 0.9)] * 3
     assert decide([c], seated_at=lambda t: True) == []
     assert [v.code for v in decide([c], seated_at=lambda t: False)] == ["X02"]
+
+
+def test_detector_runs_only_before_the_room_empties():
+    from pipeline.analyze import leave_windows
+    s = [StateSample(t, n, n > 0, False) for t, n in [(0.5, 1), (2.0, 1), (3.5, 1), (5.0, 0), (6.5, 0), (8.0, 1)]]
+    assert leave_windows(s) == [(5.0 - 8.5, 5.5)]
+    assert leave_windows([StateSample(0.5, 1, True, False), StateSample(2.0, 1, True, False)]) == []

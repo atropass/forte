@@ -90,6 +90,17 @@ def refine_times(samples: list[StateSample], have: set[float]) -> list[float]:
     return extra
 
 
+def leave_windows(states: list[StateSample], before: float = 8.5) -> list[tuple[float, float]]:
+    """Time windows before each moment the room becomes empty (same smoothing as the timeline)."""
+    from .timeline import _smooth_counts
+    occ = _smooth_counts(states)
+    out = []
+    for i in range(1, len(states)):
+        if occ[i] == 0 and occ[i - 1] > 0:
+            out.append((states[i].t - before, states[i].t + 0.5))
+    return out
+
+
 class Analyzer:
     def __init__(self, vlm: VLM, detector: Detector, key_clf: KeyClassifier | None = None, aux_vlm: VLM | None = None):
         self.vlm = vlm
@@ -98,6 +109,21 @@ class Analyzer:
         self.aux_vlm = aux_vlm  # optional second model, used only on hand-over frames (VLM_AUX_MODEL)
 
     # ------------------------------------------------------------------ stages
+    def detect_windows(self, path: Path, duration: float, windows: list[tuple[float, float]], scene: Scene):
+        """Detector on 2-fps frames inside the given windows only -> (timestamps, in-room person boxes, (w, h))."""
+        ts_all, boxes_all, wh = [], [], (464, 848)
+        for a, b in windows:
+            ts, frames = extract_frames(path, fps=PIPE_FPS, max_side=DET_SIDE, start=max(0.0, a), end=min(b, duration))
+            if not len(frames):
+                continue
+            h, w = frames.shape[1:3]
+            wh = (w, h)
+            for t, fd in zip(ts, self.det(frames)):
+                ts_all.append(float(t))
+                boxes_all.append([d.box for d in fd if d.label == "person" and in_room(d.box, w, h, scene, d.score)])
+        order = np.argsort(ts_all) if ts_all else []
+        return np.array([ts_all[i] for i in order]), [boxes_all[i] for i in order], wh
+
     def _state_at(self, path: Path, times: list[float]) -> list[StateSample]:
         frames = [frame_at(path, float(t)) for t in times]
         raws = self.vlm.raw([(QUESTIONS["state"]["text"].strip(), [f]) for f in frames], max_tokens=60)
@@ -128,26 +154,26 @@ class Analyzer:
         t0 = time.time()
         timing = {}
 
-        prog("perception", 0.05)
         info = probe(path)
-        ts, frames = extract_frames(path, fps=PIPE_FPS, max_side=DET_SIDE)
-        dets = self.det(frames)
-        h, w = frames.shape[1:3]
-        timing["perception"] = round(time.time() - t0, 1)
 
-        prog("grounding", 0.20)
+        prog("grounding", 0.05)
         g = self.vlm.ground(frame_at(path, info.duration * 0.5))
         scene = Scene.from_grounding(g)
         rel_boxes = {k: v for k, v in scene.__dict__.items() if v}  # 0-1, for drawing evidence boxes
         scene_boxes = dict(g)  # 0-1000, as expected by crop_box / image_for
 
-        prog("scene_state", 0.30)
+        prog("scene_state", 0.15)
         t1 = time.time()
         states = self.scene_state(path, info.duration)
         timing["scene_state"] = round(time.time() - t1, 1)
-        # detector boxes of plausible in-room people, for leave-start refinement
-        det_boxes = [[d.box for d in fd if d.label == "person" and in_room(d.box, w, h, scene, d.score)] for fd in dets]
-        events, dbg = events_from_state(states, info.duration, ts, det_boxes, (w, h))
+
+        # Person detector only where it is needed: the few seconds before each moment the room becomes empty,
+        # to find when the cashier stood up / turned away (the timecode). Not on the whole video.
+        prog("perception", 0.40)
+        t1 = time.time()
+        ts, det_boxes, wh = self.detect_windows(path, info.duration, leave_windows(states), scene)
+        timing["perception"] = round(time.time() - t1, 1)
+        events, dbg = events_from_state(states, info.duration, ts, det_boxes, wh)
 
         prog("checks", 0.60)
         t2 = time.time()
