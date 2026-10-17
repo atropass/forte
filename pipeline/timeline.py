@@ -164,6 +164,9 @@ def _leave_start(t_empty: float, det_ts: np.ndarray, det_boxes: list[list[np.nda
     return float(det_ts[idx[k]])
 
 
+LEAVE_DIRECT_S = 4.0  # stand-up this close to the room becoming empty = walked straight out
+
+
 def events_from_state(samples: list[StateSample], duration: float, det_ts: np.ndarray,
                       det_boxes: list[list[np.ndarray]], frame_wh) -> tuple[list[Event], dict]:
     events: list[Event] = []
@@ -186,11 +189,14 @@ def events_from_state(samples: list[StateSample], duration: float, det_ts: np.nd
                 k = i - 1
                 while k > 0 and not samples[k].seated and t_empty - ts[k] < 10.0:
                     k -= 1
-                if samples[k].seated and k < i - 1:
-                    t_leave = (ts[k] + ts[k + 1]) / 2
+                stood_up = (ts[k] + ts[k + 1]) / 2 if samples[k].seated and k < i - 1 else None
+                if stood_up is not None and t_empty - stood_up <= LEAVE_DIRECT_S:
+                    t_leave = stood_up  # stood up and walked straight out
                 else:
+                    # stood up long before leaving (went to the safe first) or never seen seated: the timecode is
+                    # the start of the walk to the door = last moment the cashier stood still (detector)
                     t_leave = _leave_start(t_empty, det_ts, det_boxes, frame_wh)
-                    t_leave = max(t_leave, ts[i - 1] - 6.0)
+                    t_leave = max(t_leave, ts[i - 1] - 6.0, stood_up or 0.0)
                 events.append(Event("cashier_left", round(t_leave, 2), ts[j] if j < n else duration,
                                     conf=1.0 if j - i >= 2 else 0.6, info={"t_room_empty": t_empty}))
             if j < n:

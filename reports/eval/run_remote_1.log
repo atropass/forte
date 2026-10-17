@@ -1,3 +1,57 @@
 W1017 19:56:38.532000 79801 .venv/lib/python3.13/site-packages/torch/distributed/elastic/multiprocessing/redirects.py:35] NOTE: Redirects are currently not supported in MacOs.
 Loading weights:   0%|          | 0/529 [00:00<?, ?it/s]Loading weights: 100%|██████████| 529/529 [00:00<00:00, 8093.01it/s]
 X-1: no_violation [] label=['X03']@[22.0] (40s)
+X-4: violation [('V03', 58.8)] label=['V03']@[57.0, 68.0] (773s)
+X-10: no_violation [] label=[]@[] (193s)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/aibar_berekeyev/Desktop/fortehack/pipeline/eval.py", line 142, in <module>
+    main()
+    ~~~~^^
+  File "/Users/aibar_berekeyev/Desktop/fortehack/pipeline/eval.py", line 137, in main
+    run(vids, labels, a.force)
+    ~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/aibar_berekeyev/Desktop/fortehack/pipeline/eval.py", line 59, in run
+    res = an.analyze(ROOT / labels[vid]["file"], job_id=vid)
+  File "/Users/aibar_berekeyev/Desktop/fortehack/pipeline/analyze.py", line 146, in analyze
+    extra = refine_times(samples, set(coarse))
+             ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/aibar_berekeyev/Desktop/fortehack/pipeline/analyze.py", line 119, in scene_state
+    h, w = frames.shape[1:3]
+          ~~~~~~~~~~~~~^^^^^
+  File "/Users/aibar_berekeyev/Desktop/fortehack/pipeline/analyze.py", line 103, in _state_at
+  File "/Users/aibar_berekeyev/Desktop/fortehack/pipeline/vlm.py", line 128, in raw
+    outs = self.backend.generate(reqs)
+  File "/Users/aibar_berekeyev/Desktop/fortehack/pipeline/vlm_backends.py", line 78, in generate
+    out = self._generate(reqs)
+  File "/Users/aibar_berekeyev/Desktop/fortehack/pipeline/vlm_backends.py", line 238, in _generate
+    return self._map(one, reqs)
+           ~~~~~~~~~^^^^^^^^^^^
+  File "/Users/aibar_berekeyev/Desktop/fortehack/pipeline/vlm_backends.py", line 231, in _map
+    return list(ex.map(fn, items))
+  File "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/concurrent/futures/_base.py", line 619, in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/concurrent/futures/_base.py", line 317, in _result_or_cancel
+    return fut.result(timeout)
+           ~~~~~~~~~~^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/opt/homebrew/Cellar/python@3.13/3.13.2/Frameworks/Python.framework/Versions/3.13/lib/python3.13/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "/Users/aibar_berekeyev/Desktop/fortehack/pipeline/vlm_backends.py", line 235, in one
+    j = self._post({"model": self.model_id, "temperature": 0.0, "max_tokens": r.max_tokens,
+                    "messages": [{"role": "user", "content": self._content(r)}]})
+  File "/Users/aibar_berekeyev/Desktop/fortehack/pipeline/vlm_backends.py", line 216, in _post
+    raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+RuntimeError: HTTP 502: <!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Waiting for service to respond — RunPod</title>
+ 
