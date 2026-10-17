@@ -113,3 +113,55 @@ def test_catalog(client):
     codes = {i["code"]: i for i in items}
     assert {"V01", "V03", "V17", "X01", "X02"} <= set(codes)
     assert codes["V10"]["status"] == "disabled"
+
+
+def signup(c, name, pw="secret123"):
+    r = c.post("/api/v1/auth/register", json={"username": name, "password": pw})
+    assert r.status_code == 200, r.text
+    return r
+
+
+def test_register_login_logout(client):
+    assert client.get("/api/v1/auth/me").status_code == 401
+    signup(client, "alice")
+    assert client.get("/api/v1/auth/me").json() == {"username": "alice"}
+    assert client.post("/api/v1/auth/register", json={"username": "ALICE", "password": "secret123"}).status_code == 400
+    assert client.post("/api/v1/auth/register", json={"username": "bob", "password": "123"}).status_code == 400
+    assert client.post("/api/v1/auth/logout").status_code == 200
+    assert client.get("/api/v1/auth/me").status_code == 401
+    assert client.get("/api/v1/catalog").status_code == 401
+    assert client.post("/api/v1/auth/login", json={"username": "alice", "password": "wrong"}).status_code == 401
+    assert client.post("/api/v1/auth/login", json={"username": "alice", "password": "secret123"}).status_code == 200
+    assert client.get("/api/v1/catalog").status_code == 200
+
+
+def test_history_is_per_user_and_video_is_deleted(client):
+    signup(client, "alice")
+    jid = client.post("/api/v1/analyze", files={"file": ("X-47.mov", b"\x00" * 1000)}).json()["job_id"]
+    res = wait_done(client, jid)
+    jsonschema.validate(res, SPEC_SCHEMA)
+    items = client.get("/api/v1/jobs").json()["items"]
+    assert [(i["job_id"], i["filename"], i["status"]) for i in items] == [(jid, "X-47.mov", "done")]
+    for _ in range(50):  # summary is written right after the worker finishes
+        item = client.get("/api/v1/jobs").json()["items"][0]
+        if item["verdict"]:
+            break
+        time.sleep(0.02)
+    assert item["verdict"] == "violation" and item["n_violations"] == 1
+    import service.app as app_mod
+    d = app_mod.store.dir(jid)
+    assert not list(d.glob("input.*")), "video must be deleted after analysis"
+    assert (d / "result.json").exists() and "X-47.mov" in (d / "log.txt").read_text()
+
+    client.post("/api/v1/auth/logout")
+    signup(client, "bob")
+    assert client.get("/api/v1/jobs").json()["items"] == []
+    assert client.get(f"/api/v1/jobs/{jid}").status_code == 404
+    assert client.get(f"/api/v1/jobs/{jid}", headers={"X-API-Key": "test-key"}).json()["status"] == "done"
+
+
+def test_archive_prefix():
+    from service.archive import prefix
+    p = prefix({"job_id": "ab12cd34", "owner": "alice", "filename": "Х-47 копия.mov", "created": 0})
+    assert p == "reports/alice/1970-01-01_ab12cd34_Х-47_копия/"
+    assert prefix({"job_id": "ab12cd34", "created": 0}).startswith("reports/api/")

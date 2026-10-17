@@ -1,11 +1,15 @@
 """FastAPI service: API for the jury + the web UI.
 
-API (all routes under /api/v1 require header X-API-Key = env API_KEY, else 401):
+API (routes under /api/v1 require header X-API-Key = env API_KEY, or a login session cookie, else 401):
   POST /api/v1/analyze              multipart field `file` (.mov) -> {"job_id", "status": "processing"}
   GET  /api/v1/jobs/{job_id}        processing | done (exact spec schema) | failed (+ "error")
   GET  /api/v1/jobs/{job_id}/progress   stage / progress / queue position / timings (for the UI)
   GET  /api/v1/jobs/{job_id}/details    events, scene-state timeline, timings (for the UI)
   GET  /api/v1/catalog              violation catalog with what the service checks (for the UI)
+  GET  /api/v1/jobs                 history of the logged-in user (session only)
+  POST /api/v1/auth/register | login | logout, GET /api/v1/auth/me   accounts for the web UI (users.py)
+A logged-in user sees only their own jobs; the X-API-Key caller sees all. Videos are deleted after analysis;
+reports and logs are kept on the volume and archived to object storage when BUCKET_NAME is set (archive.py).
 Unauthenticated: GET /healthz, and the static UI at / (FRONTEND_DIR).
 
 Env: API_KEY (required), DATA_DIR (./data_service), VLM_BACKEND (mlx|vllm), VLM_MODEL, DET_MODEL,
@@ -26,16 +30,20 @@ os.environ.setdefault("HF_HUB_OFFLINE", "1")  # locality: never reach the hub at
 os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
 import yaml  # noqa: E402
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile  # noqa: E402
+from fastapi import Cookie, Depends, FastAPI, File, Header, HTTPException, Request, Response, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
 
+from .archive import Archive  # noqa: E402
 from .jobs import JobStore, Worker  # noqa: E402
+from .users import SESSION_TTL_S, AuthError, UserStore  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 log = logging.getLogger("service")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logging.getLogger().setLevel(os.getenv("LOG_LEVEL", "INFO"))  # also when a host (uvicorn, pytest) configured logging first: per-job log.txt needs INFO
 
 API_KEY = os.getenv("API_KEY", "")
 DATA_DIR = Path(os.getenv("DATA_DIR", ROOT / "data_service"))
@@ -60,6 +68,9 @@ if not API_KEY:
     log.warning("API_KEY not set - using key from %s:  %s", _kf, API_KEY)
 
 store = JobStore(DATA_DIR)
+users = UserStore(DATA_DIR / "users.db")
+archive = Archive()
+SESSION_COOKIE = "fv_session"
 state = {"analyzer": None, "loaded_at": None, "load_error": None, "models": {}}
 
 
@@ -72,7 +83,14 @@ def _run(video: Path, jid: str, progress):
     return state["analyzer"].analyze(video, job_id=jid, progress=progress)
 
 
-worker = Worker(store, _run, JOB_TIMEOUT_S)
+def _finished(jid: str):
+    """Summary for the history list, then archive report + log (never the video) to object storage."""
+    res = store.result(jid) or {}
+    job = store.write(jid, verdict=res.get("verdict"), n_violations=len(res.get("violations") or []))
+    archive.upload_async(store.dir(jid), job, on_done=lambda key: store.write(jid, archive_key=key))
+
+
+worker = Worker(store, _run, JOB_TIMEOUT_S, on_finish=_finished)
 
 
 def load_models():
@@ -125,12 +143,67 @@ app = FastAPI(title="ForteVision AI — Cash Compliance", version="1.0.0", lifes
               docs_url="/api/docs", openapi_url="/api/openapi.json")
 origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 if origins:
-    app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
+    app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 
-def require_key(x_api_key: str | None = Header(default=None)):
-    if not x_api_key or not hmac.compare_digest(x_api_key.encode(), API_KEY.encode()):
+def caller(x_api_key: str | None = Header(default=None), fv_session: str | None = Cookie(default=None)) -> str | None:
+    """Username of the logged-in user, or None for the X-API-Key caller (full access)."""
+    if x_api_key and hmac.compare_digest(x_api_key.encode(), API_KEY.encode()):
+        return None
+    user = users.session_user(fv_session) if fv_session else None
+    if user is None:
         raise HTTPException(status_code=401, detail="invalid or missing X-API-Key")
+    return user
+
+
+def require_user(fv_session: str | None = Cookie(default=None)) -> str:
+    user = users.session_user(fv_session) if fv_session else None
+    if user is None:
+        raise HTTPException(status_code=401, detail="not logged in")
+    return user
+
+
+class Credentials(BaseModel):
+    username: str
+    password: str
+
+
+def _start_session(username: str, request: Request, response: Response) -> dict:
+    https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    response.set_cookie(SESSION_COOKIE, users.create_session(username), max_age=SESSION_TTL_S, httponly=True,
+                        samesite="lax", secure=https, path="/")
+    return {"username": username}
+
+
+@app.post("/api/v1/auth/register")
+def register(cred: Credentials, request: Request, response: Response):
+    try:
+        name = users.register(cred.username, cred.password)
+    except AuthError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+    return _start_session(name, request, response)
+
+
+@app.post("/api/v1/auth/login")
+def login(cred: Credentials, request: Request, response: Response):
+    try:
+        name = users.check_password(cred.username, cred.password)
+    except AuthError as e:
+        raise HTTPException(status_code=401, detail=str(e)) from None
+    return _start_session(name, request, response)
+
+
+@app.post("/api/v1/auth/logout")
+def logout(response: Response, fv_session: str | None = Cookie(default=None)):
+    if fv_session:
+        users.delete_session(fv_session)
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return {"ok": True}
+
+
+@app.get("/api/v1/auth/me")
+def me(user: str = Depends(require_user)):
+    return {"username": user}
 
 
 @app.get("/healthz")
@@ -139,8 +212,8 @@ def healthz():
             "queue": worker.q.qsize(), "current_job": worker.current}
 
 
-@app.post("/api/v1/analyze", dependencies=[Depends(require_key)])
-async def analyze(file: UploadFile = File(...)):
+@app.post("/api/v1/analyze")
+async def analyze(file: UploadFile = File(...), who: str | None = Depends(caller)):
     name = Path(file.filename or "video.mov").name
     ext = Path(name).suffix.lower()
     if ext not in ALLOWED_EXT:
@@ -164,20 +237,30 @@ async def analyze(file: UploadFile = File(...)):
         d.rmdir()
         raise HTTPException(status_code=400, detail="empty file")
     store.write(jid, job_id=jid, status="processing", stage="queued", progress=0.0, created=time.time(),
-                filename=name, video=dest.name, size_bytes=size)
+                filename=name, video=dest.name, size_bytes=size, owner=who)
     worker.submit(jid)
     return {"job_id": jid, "status": "processing"}
 
 
-def _get_job(jid: str) -> dict:
-    if not store.valid(jid):
+def _get_job(jid: str, who: str | None) -> dict:
+    job = store.read(jid) if store.valid(jid) else None
+    if job is None or (who is not None and job.get("owner") != who):  # other users' jobs look like missing ones
         raise HTTPException(status_code=404, detail="job not found")
-    return store.read(jid)
+    return job
 
 
-@app.get("/api/v1/jobs/{job_id}", dependencies=[Depends(require_key)])
-def get_job(job_id: str):
-    job = _get_job(job_id)
+HISTORY_KEYS = ("job_id", "filename", "size_bytes", "created", "finished", "elapsed_s", "status", "stage", "error",
+                "verdict", "n_violations")
+
+
+@app.get("/api/v1/jobs")
+def list_jobs(user: str = Depends(require_user)):
+    return {"items": [{k: j.get(k) for k in HISTORY_KEYS} for j in store.list(user)]}
+
+
+@app.get("/api/v1/jobs/{job_id}")
+def get_job(job_id: str, who: str | None = Depends(caller)):
+    job = _get_job(job_id, who)
     if job["status"] == "done":
         res = store.result(job_id) or {}
         return JSONResponse({k: res.get(k) for k in SPEC_KEYS} | {"job_id": job_id, "status": "done"})
@@ -186,28 +269,22 @@ def get_job(job_id: str):
     return {"job_id": job_id, "status": "processing"}
 
 
-@app.get("/api/v1/jobs/{job_id}/progress", dependencies=[Depends(require_key)])
-def get_progress(job_id: str):
-    job = _get_job(job_id)
+@app.get("/api/v1/jobs/{job_id}/progress")
+def get_progress(job_id: str, who: str | None = Depends(caller)):
+    job = _get_job(job_id, who)
     return {k: job.get(k) for k in ("job_id", "status", "stage", "progress", "created", "started", "finished",
                                     "elapsed_s", "filename", "size_bytes", "error")} | {
         "queue_position": worker.queue_position(job_id), "models_ready": state["analyzer"] is not None}
 
 
-@app.get("/api/v1/jobs/{job_id}/details", dependencies=[Depends(require_key)])
-def get_details(job_id: str):
-    job = _get_job(job_id)
+@app.get("/api/v1/jobs/{job_id}/details")
+def get_details(job_id: str, who: str | None = Depends(caller)):
+    job = _get_job(job_id, who)
     res = store.result(job_id) or {}
     return {"job": job, "debug": res.get("_debug", {}), "models": state["models"]}
 
 
-@app.get("/api/v1/jobs/{job_id}/video", dependencies=[Depends(require_key)])
-def get_video(job_id: str):
-    job = _get_job(job_id)
-    return FileResponse(store.dir(job_id) / job["video"])
-
-
-@app.get("/api/v1/catalog", dependencies=[Depends(require_key)])
+@app.get("/api/v1/catalog", dependencies=[Depends(caller)])
 def catalog():
     cat = json.loads((ROOT / "legal" / "violations_catalog.source.json").read_text())
     cov = yaml.safe_load((ROOT / "legal" / "coverage.yaml").read_text())

@@ -1,8 +1,9 @@
 """Persistent single-worker job queue.
 
-Each job lives in DATA_DIR/jobs/<job_id>/: input video, job.json (status/progress), result.json.
+Each job lives in DATA_DIR/jobs/<job_id>/: input video, job.json (status/progress), result.json, log.txt.
 One GPU worker thread processes jobs in FIFO order. On restart, jobs still marked "processing"
 are re-queued (their video is on disk), so a restart never loses accepted work.
+The video is deleted as soon as the job is done or failed: only the report and the log are kept.
 """
 from __future__ import annotations
 
@@ -60,6 +61,17 @@ class JobStore:
         tmp.write_text(json.dumps(res, ensure_ascii=False))
         tmp.replace(p)
 
+    def list(self, owner: str) -> list[dict]:
+        """Jobs of one user, newest first."""
+        out = []
+        for d in self.root.iterdir():
+            f = d / "job.json"
+            if f.exists():
+                j = json.loads(f.read_text())
+                if j.get("owner") == owner:
+                    out.append(j)
+        return sorted(out, key=lambda j: j.get("created", 0), reverse=True)
+
     def unfinished(self) -> list[str]:
         out = []
         for d in self.root.iterdir():
@@ -74,10 +86,11 @@ class JobStore:
 class Worker:
     """Runs `fn(video_path, job_id, progress_cb) -> result dict` for queued jobs, one at a time."""
 
-    def __init__(self, store: JobStore, fn: Callable, timeout_s: float):
+    def __init__(self, store: JobStore, fn: Callable, timeout_s: float, on_finish: Callable | None = None):
         self.store = store
         self.fn = fn
         self.timeout_s = timeout_s
+        self.on_finish = on_finish  # called with the job id after the job is done or failed
         self.q: queue.Queue[str] = queue.Queue()
         self.ready = threading.Event()
         self.current: str | None = None
@@ -85,6 +98,9 @@ class Worker:
 
     def start(self):
         for jid in self.store.unfinished():
+            if not (self.store.dir(jid) / self.store.read(jid).get("video", "")).is_file():
+                self.store.write(jid, status="failed", stage="failed", error="video lost before analysis", finished=time.time())
+                continue
             log.info("re-queue unfinished job %s", jid)
             self.store.write(jid, status="processing", stage="queued", progress=0.0)
             self.q.put(jid)
@@ -109,6 +125,12 @@ class Worker:
             def progress(stage: str, pct: float, _jid=jid):
                 self.store.write(_jid, stage=stage, progress=round(float(pct), 3))
 
+            # everything logged from this thread while the job runs also goes to the job's log.txt
+            handler = logging.FileHandler(self.store.dir(jid) / "log.txt", encoding="utf-8")
+            handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+            handler.addFilter(lambda r, _t=threading.get_ident(): r.thread == _t)
+            logging.getLogger().addHandler(handler)
+            log.info("job %s: %s (%s bytes)", jid, job.get("filename"), job.get("size_bytes"))
             try:
                 res = self.fn(self.store.dir(jid) / job["video"], jid, progress)
                 elapsed = time.time() - t0
@@ -122,5 +144,10 @@ class Worker:
                 self.store.write(jid, status="failed", stage="failed", error=f"{type(e).__name__}: {e}",
                                  finished=time.time())
             finally:
+                logging.getLogger().removeHandler(handler)
+                handler.close()
+                (self.store.dir(jid) / job["video"]).unlink(missing_ok=True)
                 self.current = None
                 self.q.task_done()
+                if self.on_finish:
+                    self.on_finish(jid)

@@ -32,7 +32,7 @@ make check-vlm
 ```bash
 make run
 ```
-Откройте http://localhost:8000, введите `API_KEY` из `.env` (по умолчанию `dev-key`). Остальные команды: `make help`.
+Откройте http://localhost:8000 и зарегистрируйтесь (логин + пароль). Остальные команды: `make help`.
 
 | Команда | Что делает |
 |---|---|
@@ -65,7 +65,7 @@ scripts/download_weights.sh
 docker compose up -d --build
 ```
 Готовность (модели загружаются ~1–3 мин): `curl http://<host>/healthz` → `"ok": true`.
-UI: `http://<host>/` (API-ключ вводится в правом верхнем углу, хранится только в браузере).
+UI: `http://<host>/` (вход или регистрация, у каждого пользователя своя история проверок).
 
 ### 1.1 Проверка задеплоенной версии (порядок)
 
@@ -109,6 +109,62 @@ docker compose run --rm backend python3 scripts/bench.py
 двух моделей. В `.env`: `VLM_AUX_MODEL=Qwen/Qwen2.5-VL-7B-Instruct`, веса:
 `AUX_MODEL=Qwen/Qwen2.5-VL-7B-Instruct scripts/download_weights.sh`. Сравните `eval_remote.py` с ней и без неё.
 
+### 1.3 Деплой на Fly.io (CPU) + Qwen на GPU-поде
+
+На Fly работает приложение без GPU: UI, API, детектор RT-DETRv2 на CPU и правила. VLM вызывается по HTTP
+на нашем vLLM-поде (`VLM_BACKEND=openai`). Образ: [`docker/fly.Dockerfile`](docker/fly.Dockerfile), конфиг: [`fly.toml`](fly.toml)
+(приложение `forte-vision`, регион `fra`, volume `forte_data` → `/data`, 2 shared CPU / 4 GB).
+
+**Подготовка (один раз).** Установите [flyctl](https://fly.io/docs/flyctl/install/) и войдите:
+```bash
+brew install flyctl
+```
+```bash
+fly auth login
+```
+
+**Новое приложение (один раз).** Если `forte-vision` уже существует, пропустите этот шаг.
+```bash
+fly apps create forte-vision
+```
+```bash
+fly volumes create forte_data --app forte-vision --region fra --size 3
+```
+На volume хранятся задания, отчёты, логи и база пользователей (`users.db`). Видео удаляется сразу после анализа.
+
+**Секреты.** `API_KEY` — ключ API для жюри; `VLM_API_BASE` (…/v1) и `VLM_API_KEY` — адрес и токен пода
+(см. [GPU_ACCESS.md](GPU_ACCESS.md)):
+```bash
+fly secrets set -a forte-vision API_KEY=<длинный случайный ключ> VLM_API_BASE=https://<pod>-8000.proxy.runpod.net/v1 VLM_API_KEY=<токен пода>
+```
+Необязательно: архив отчётов и логов в S3-совместимом Tigris (`reports/<пользователь>/<дата>_<id>_<видео>/`).
+Команда сама добавит секреты `BUCKET_NAME` и `AWS_*`:
+```bash
+fly storage create -a forte-vision -n forte-vision-reports
+```
+
+**Деплой.** Выкатывается последний коммит текущей ветки; незакоммиченные файлы, `.env` и видео в образ
+не попадают (сборка из `git archive`, [`scripts/deploy_fly.sh`](scripts/deploy_fly.sh)):
+```bash
+make deploy
+```
+**Автоматически:** каждый пуш в `main`, прошедший тесты, деплоится GitHub Actions
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)). Для этого в Settings → Secrets → Actions репозитория нужен
+секрет `FLY_API_TOKEN`:
+```bash
+fly tokens create deploy -a forte-vision
+```
+
+**Проверка.** `curl https://forte-vision.fly.dev/healthz` → `"ok": true` (модели загружаются ~20–30 с после старта).
+```bash
+fly status -a forte-vision
+```
+```bash
+fly logs -a forte-vision
+```
+UI: https://forte-vision.fly.dev — вход или регистрация, история проверок у каждого пользователя своя.
+Машина должна быть одна: volume привязан к ней, задания обрабатывает один воркер.
+
 ## 2. Локальный запуск на Mac (Apple silicon, MLX) — разработка/демо
 
 ```bash
@@ -120,14 +176,13 @@ scripts/download_weights.sh --mac
 ```bash
 make serve-local
 ```
-Откройте http://localhost:8000 и один раз введите ключ `dev-key` (кнопка API Key; ключ запоминается в браузере).
-Свой ключ: `API_KEY=... make serve-local`. Если сервис запущен без `API_KEY` другим способом, он сам
-сгенерирует ключ, сохранит в `data_service/api_key.txt` и выведет его в лог. На M1 Pro 16 GB анализ 20-секундного ролика
+Откройте http://localhost:8000 и зарегистрируйтесь. На M1 Pro 16 GB анализ 20-секундного ролика
 занимает ~2 мин (на GPU-сервере — в разы быстрее).
 
 ## 3. API
 
-Все маршруты `/api/v1/*` требуют заголовок `X-API-Key`; без верного ключа — `401`.
+Маршруты `/api/v1/*` требуют заголовок `X-API-Key` (доступ ко всем заданиям) или сессию пользователя веб-UI
+(cookie после `/api/v1/auth/login`, видны только свои задания); иначе — `401`. История пользователя: `GET /api/v1/jobs`.
 
 | Метод | Путь | Назначение |
 |---|---|---|

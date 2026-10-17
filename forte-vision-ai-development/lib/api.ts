@@ -1,7 +1,7 @@
 // Client for the ForteVision backend (service/app.py). Same origin in production (static export served by
 // the backend / nginx); in `pnpm dev` set NEXT_PUBLIC_API_BASE=http://localhost:8000.
+// Auth: login session in an HttpOnly cookie (sent with credentials: 'include'); the X-API-Key is for API clients only.
 export const API_BASE = (process.env.NEXT_PUBLIC_API_BASE ?? '').replace(/\/$/, '')
-const KEY_STORAGE = 'fv_api_key'
 
 export type EvidenceFrame = { timestamp_sec: number; image_base64: string }
 export type LegalRef = {
@@ -27,6 +27,11 @@ export type CatalogItem = {
   clause?: string | null; verified: boolean
 }
 export type Catalog = { items: CatalogItem[]; categories: Record<string, string>; models: Record<string, string> }
+export type HistoryItem = {
+  job_id: string; filename: string; size_bytes: number; created: number; finished?: number; elapsed_s?: number
+  status: 'processing' | 'done' | 'failed'; stage?: string; error?: string
+  verdict?: 'violation' | 'no_violation' | null; n_violations?: number | null
+}
 export type Details = {
   job: Record<string, unknown>
   debug: { timing_sec?: Record<string, number>; duration_sec?: number; events?: { kind: string; t: number }[] }
@@ -37,15 +42,12 @@ export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message) }
 }
 
-export function getApiKey(): string {
-  try { return localStorage.getItem(KEY_STORAGE) ?? '' } catch { return '' }
-}
-export function setApiKey(key: string) {
-  try { localStorage.setItem(KEY_STORAGE, key) } catch { /* storage unavailable: key lives in memory only */ }
-}
-
-async function request<T>(path: string, key: string): Promise<T> {
-  const r = await fetch(`${API_BASE}${path}`, { headers: { 'X-API-Key': key } })
+async function request<T>(path: string, init?: { method: 'POST'; body?: unknown }): Promise<T> {
+  const r = await fetch(`${API_BASE}${path}`, {
+    method: init?.method ?? 'GET', credentials: 'include',
+    headers: init?.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
+    body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+  })
   if (!r.ok) {
     let msg = r.statusText
     try { msg = (await r.json()).detail ?? msg } catch { /* not JSON */ }
@@ -54,17 +56,24 @@ async function request<T>(path: string, key: string): Promise<T> {
   return r.json() as Promise<T>
 }
 
-export const getJob = (id: string, key: string) => request<JobResult>(`/api/v1/jobs/${id}`, key)
-export const getProgress = (id: string, key: string) => request<Progress>(`/api/v1/jobs/${id}/progress`, key)
-export const getDetails = (id: string, key: string) => request<Details>(`/api/v1/jobs/${id}/details`, key)
-export const getCatalog = (key: string) => request<Catalog>('/api/v1/catalog', key)
+export const getJob = (id: string) => request<JobResult>(`/api/v1/jobs/${id}`)
+export const getProgress = (id: string) => request<Progress>(`/api/v1/jobs/${id}/progress`)
+export const getDetails = (id: string) => request<Details>(`/api/v1/jobs/${id}/details`)
+export const getCatalog = () => request<Catalog>('/api/v1/catalog')
+export const getHistory = () => request<{ items: HistoryItem[] }>('/api/v1/jobs').then((r) => r.items)
+
+type User = { username: string }
+export const getMe = () => request<User>('/api/v1/auth/me')
+export const login = (username: string, password: string) => request<User>('/api/v1/auth/login', { method: 'POST', body: { username, password } })
+export const register = (username: string, password: string) => request<User>('/api/v1/auth/register', { method: 'POST', body: { username, password } })
+export const logout = () => request<{ ok: boolean }>('/api/v1/auth/logout', { method: 'POST' })
 
 /** Upload with progress (fetch has no upload progress events). */
-export function uploadVideo(file: File, key: string, onProgress: (fraction: number) => void): Promise<{ job_id: string }> {
+export function uploadVideo(file: File, onProgress: (fraction: number) => void): Promise<{ job_id: string }> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest()
     xhr.open('POST', `${API_BASE}/api/v1/analyze`)
-    xhr.setRequestHeader('X-API-Key', key)
+    xhr.withCredentials = true
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total) }
     xhr.onload = () => {
       let body: { job_id?: string; detail?: string } = {}
