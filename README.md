@@ -50,9 +50,11 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-mac.txt
 scripts/download_weights.sh --mac
 ```
 ```bash
-API_KEY=dev-key make serve-local
+make serve-local
 ```
-Откройте http://localhost:8000 и введите ключ `dev-key`. На M1 Pro 16 GB анализ 20-секундного ролика
+Откройте http://localhost:8000 и один раз введите ключ `dev-key` (кнопка API Key; ключ запоминается в браузере).
+Свой ключ: `API_KEY=... make serve-local`. Если сервис запущен без `API_KEY` другим способом, он сам
+сгенерирует ключ, сохранит в `data_service/api_key.txt` и выведет его в лог. На M1 Pro 16 GB анализ 20-секундного ролика
 занимает ~2 мин (на GPU-сервере — в разы быстрее).
 
 ## 3. API

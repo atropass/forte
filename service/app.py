@@ -46,7 +46,18 @@ ALLOWED_EXT = {".mov", ".mp4", ".m4v"}
 SPEC_KEYS = ("job_id", "status", "verdict", "violations")
 
 if not API_KEY:
-    raise RuntimeError("API_KEY env var is required")
+    # No key configured: generate one once, persist it next to the jobs and print it, so the service still
+    # starts with zero configuration but is never open without a key.
+    _kf = DATA_DIR / "api_key.txt"
+    if _kf.exists():
+        API_KEY = _kf.read_text().strip()
+    else:
+        import secrets
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        API_KEY = secrets.token_urlsafe(24)
+        _kf.write_text(API_KEY)
+        _kf.chmod(0o600)
+    log.warning("API_KEY not set - using key from %s:  %s", _kf, API_KEY)
 
 store = JobStore(DATA_DIR)
 state = {"analyzer": None, "loaded_at": None, "load_error": None, "models": {}}
@@ -90,7 +101,10 @@ def load_models():
 
 @asynccontextmanager
 async def lifespan(_app):
-    threading.Thread(target=lambda: load_models(), daemon=True, name="model-loader").start()
+    if os.getenv("VLM_BACKEND", "mlx").lower() == "vllm":
+        load_models()  # vLLM must be created in the main thread (signal handlers); blocks startup ~1-3 min
+    else:
+        threading.Thread(target=lambda: load_models(), daemon=True, name="model-loader").start()
     worker.start()
     yield
 

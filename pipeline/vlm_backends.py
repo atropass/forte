@@ -76,7 +76,7 @@ class VLLMBackend(VLMBackend):
             model=model_id,
             max_model_len=int(os.getenv("VLLM_MAX_MODEL_LEN", "8192")),
             gpu_memory_utilization=float(os.getenv("VLLM_GPU_UTIL", "0.80")),
-            limit_mm_per_prompt={"image": 4},
+            limit_mm_per_prompt={"image": 6},  # handover check sends 6 frames
             mm_processor_kwargs={"max_pixels": int(os.getenv("VLM_MAX_PIXELS", str(640 * 640)))},
             enforce_eager=os.getenv("VLLM_EAGER", "0") == "1",
         )

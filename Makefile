@@ -18,8 +18,8 @@ weights:          ## download weights once (GPU server layout)
 	scripts/download_weights.sh
 ui:               ## build the static UI (forte-vision-ai-development/out)
 	cd forte-vision-ai-development && pnpm install && NEXT_TELEMETRY_DISABLED=1 pnpm build
-serve-local: ui   ## Mac/dev: backend (MLX) + UI on http://localhost:8000
-	VLM_BACKEND=$${VLM_BACKEND:-mlx} VLM_MODEL=$${VLM_MODEL:-mlx-community/Qwen3-VL-4B-Instruct-4bit} \
+serve-local: ui   ## Mac/dev: backend (MLX) + UI on http://localhost:8000, key "dev-key" unless API_KEY is set
+	API_KEY=$${API_KEY:-dev-key} VLM_BACKEND=$${VLM_BACKEND:-mlx} VLM_MODEL=$${VLM_MODEL:-mlx-community/Qwen3-VL-4B-Instruct-4bit} \
 	$(PY) -m uvicorn service.app:app --host 0.0.0.0 --port 8000
 serve:            ## GPU server: docker compose (backend vLLM + nginx UI)
 	docker compose up -d --build
