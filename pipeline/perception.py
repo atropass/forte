@@ -142,3 +142,75 @@ def in_room(box: np.ndarray, w: int, h: int, scene: Scene, score: float = 1.0) -
     if score < MIN_PERSON_SCORE or bh < MIN_PERSON_H:
         return False
     return box[3] / h >= scene.floor_line() or bh >= TALL_PERSON_H
+
+
+class RemoteDetector:
+    """Our RT-DETRv2 CV service on a GPU pod (`ForteVision CV Service`, POST /detect, multipart `file`).
+    Same output as Detector: per frame a list of Det with boxes in pixels of the sent frame.
+    Env: DET_API_BASE (https://<pod>-8000.proxy.runpod.net), DET_API_KEY (default VLM_API_KEY),
+    DET_CONCURRENCY (parallel requests, default 8), DET_JPEG_QUALITY (90)."""
+
+    def __init__(self, base_url: str | None = None, api_key: str | None = None, threshold: float = 0.4):
+        import httpx
+        self.base = (base_url or os.getenv("DET_API_BASE", "")).rstrip("/")
+        if not self.base:
+            raise RuntimeError("DET_API_BASE is not set")
+        key = api_key if api_key is not None else os.getenv("DET_API_KEY") or os.getenv("VLM_API_KEY", "")
+        self.concurrency = int(os.getenv("DET_CONCURRENCY", "8"))
+        self.quality = int(os.getenv("DET_JPEG_QUALITY", "90"))
+        self.threshold = threshold
+        self.model_id = f"remote:{self.base}"
+        self.device = "remote"
+        self.client = httpx.Client(timeout=float(os.getenv("DET_TIMEOUT", "60")),
+                                   headers={"Authorization": f"Bearer {key}"} if key else {},
+                                   limits=httpx.Limits(max_connections=self.concurrency))
+
+    def _one(self, frame: np.ndarray) -> list[Det]:
+        import io
+        import time as _t
+
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.fromarray(np.asarray(frame)).save(buf, format="JPEG", quality=self.quality)
+        delay = 1.0
+        for attempt in range(5):
+            try:
+                r = self.client.post(f"{self.base}/detect", files={"file": ("frame.jpg", buf.getvalue(), "image/jpeg")})
+                if r.status_code in (429, 500, 502, 503, 504):
+                    raise RuntimeError(f"HTTP {r.status_code}")
+                r.raise_for_status()
+                out = []
+                for d in r.json().get("detections", []):
+                    if d.get("label") in COCO_KEEP and float(d.get("confidence", 0)) >= self.threshold:
+                        out.append(Det(d["label"], float(d["confidence"]), np.array(d["box"], dtype=np.float32)))
+                return out
+            except Exception:  # noqa: BLE001 - transient gateway errors are retried
+                if attempt == 4:
+                    raise
+                _t.sleep(delay)
+                delay *= 2
+        return []
+
+    def __call__(self, frames, batch: int = 16) -> list[list[Det]]:
+        from concurrent.futures import ThreadPoolExecutor
+        frames = list(frames)
+        if len(frames) <= 1:
+            return [self._one(f) for f in frames]
+        with ThreadPoolExecutor(max_workers=self.concurrency) as ex:
+            return list(ex.map(self._one, frames))
+
+
+def detector_backend(vlm_backend: str | None = None) -> str:
+    """DET_BACKEND = rtdetr (local GPU/CPU) | remote (CV service, DET_API_BASE) | auto (default):
+    remote when DET_API_BASE is set, otherwise local rtdetr."""
+    choice = os.getenv("DET_BACKEND", "auto").lower()
+    if choice == "auto":
+        choice = "remote" if os.getenv("DET_API_BASE") else "rtdetr"
+    return choice
+
+
+def make_detector(vlm_backend: str | None = None):
+    kind = detector_backend(vlm_backend)
+    if kind == "remote":
+        return RemoteDetector()
+    return Detector()

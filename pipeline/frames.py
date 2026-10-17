@@ -76,3 +76,37 @@ def frame_at(path: str | Path, t: float, max_side: int | None = None) -> np.ndar
         cmd[5] = f"{max(info.duration - 0.1, 0):.3f}"
         raw = subprocess.run(cmd, capture_output=True, check=True).stdout
     return np.frombuffer(raw[: w * h * 3], np.uint8).reshape(h, w, 3)
+
+
+_probe_cache: dict[str, VideoInfo] = {}
+
+
+def probe_cached(path: str | Path) -> VideoInfo:
+    k = str(path)
+    if k not in _probe_cache:
+        _probe_cache[k] = probe(path)
+    return _probe_cache[k]
+
+
+class FrameStore:
+    """The whole video decoded ONCE on a fixed grid (default 2 fps = every 0.5 s), native resolution, in memory.
+
+    Replaces per-frame `frame_at` calls (each spawns ffprobe + ffmpeg and seeks: ~150 ms) with a lookup;
+    a 145 s video is ~290 frames / ~340 MB and decodes in ~1.5 s. Times are snapped to the nearest grid
+    point (<= 0.25 s), which is below the scene-state resolution anyway.
+    """
+
+    def __init__(self, path: str | Path, fps: float = 2.0):
+        self.path = Path(path)
+        self.fps = fps
+        self.info = probe_cached(path)
+        self.ts, self.frames = extract_frames(path, fps=fps)
+
+    def get(self, t: float) -> np.ndarray:
+        if not len(self.frames):
+            return frame_at(self.path, t)
+        i = int(round(max(0.0, t) * self.fps))
+        return self.frames[min(i, len(self.frames) - 1)]
+
+    def __len__(self):
+        return len(self.frames)

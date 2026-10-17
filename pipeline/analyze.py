@@ -19,7 +19,7 @@ import numpy as np
 
 from . import evidence as ev
 from . import handover
-from .frames import extract_frames, frame_at, probe
+from .frames import FrameStore, frame_at, probe
 from .keyclf import KeyClassifier
 from .legal import legal_ref
 from .perception import Detector, Scene, in_room
@@ -110,22 +110,31 @@ class Analyzer:
 
     # ------------------------------------------------------------------ stages
     def detect_windows(self, path: Path, duration: float, windows: list[tuple[float, float]], scene: Scene):
-        """Detector on 2-fps frames inside the given windows only -> (timestamps, in-room person boxes, (w, h))."""
-        ts_all, boxes_all, wh = [], [], (464, 848)
+        """Detector on the 2-fps frames inside the given windows only -> (timestamps, in-room person boxes, (w, h))."""
+        ts_all, frames = [], []
         for a, b in windows:
-            ts, frames = extract_frames(path, fps=PIPE_FPS, max_side=DET_SIDE, start=max(0.0, a), end=min(b, duration))
-            if not len(frames):
-                continue
-            h, w = frames.shape[1:3]
-            wh = (w, h)
-            for t, fd in zip(ts, self.det(frames)):
-                ts_all.append(float(t))
-                boxes_all.append([d.box for d in fd if d.label == "person" and in_room(d.box, w, h, scene, d.score)])
-        order = np.argsort(ts_all) if ts_all else []
-        return np.array([ts_all[i] for i in order]), [boxes_all[i] for i in order], wh
+            t = max(0.0, round(a * PIPE_FPS) / PIPE_FPS)
+            while t <= min(b, duration - 0.05):
+                if not ts_all or t > ts_all[-1]:
+                    ts_all.append(t)
+                    frames.append(self._frame(path, t))
+                t += 1.0 / PIPE_FPS
+        if not frames:
+            return np.array([]), [], (464, 848)
+        h, w = frames[0].shape[:2]
+        boxes = [[d.box for d in fd if d.label == "person" and in_room(d.box, w, h, scene, d.score)]
+                 for fd in self.det(np.stack(frames))]
+        return np.array(ts_all), boxes, (w, h)
+
+    def _frame(self, path: Path, t: float) -> np.ndarray:
+        """Frame at time t from the once-decoded video (FrameStore), exact decode as fallback."""
+        st = getattr(self, "_store", None)
+        if st is not None and st.path == Path(path):
+            return st.get(t)
+        return frame_at(path, t)
 
     def _state_at(self, path: Path, times: list[float]) -> list[StateSample]:
-        frames = [frame_at(path, float(t)) for t in times]
+        frames = [self._frame(path, float(t)) for t in times]
         raws = self.vlm.raw([(QUESTIONS["state"]["text"].strip(), [f]) for f in frames], max_tokens=60)
         out = []
         for t, r in zip(times, raws):
@@ -157,7 +166,8 @@ class Analyzer:
         info = probe(path)
 
         prog("grounding", 0.05)
-        g = self.vlm.ground(frame_at(path, info.duration * 0.5))
+        self._store = FrameStore(path, fps=PIPE_FPS)  # decode the whole video once (~1.5 s), reuse everywhere
+        g = self.vlm.ground(self._frame(path, info.duration * 0.5))
         scene = Scene.from_grounding(g)
         rel_boxes = {k: v for k, v in scene.__dict__.items() if v}  # 0-1, for drawing evidence boxes
         scene_boxes = dict(g)  # 0-1000, as expected by crop_box / image_for
@@ -221,6 +231,7 @@ class Analyzer:
         timing["total"] = round(time.time() - t0, 1)
         log.info("%s: %d events, %d checks, %d violations, timing %s", path.name, len(events), len(checks),
                  len(out_v), timing)
+        self._store = None  # release the decoded frames (~340 MB for a 145 s video)
         prog("done", 1.0)
         return {
             "job_id": job_id,
@@ -240,7 +251,7 @@ class Analyzer:
         def fr(t):
             k = round(t, 2)
             if k not in cache:
-                cache[k] = frame_at(path, k)
+                cache[k] = self._frame(path, k)
             return cache[k]
 
         single, open_items, episodes = [], [], {}

@@ -41,10 +41,10 @@ def main():
     a = ap.parse_args()
     labels = load_labels()
     from pipeline.analyze import Analyzer
-    from pipeline.perception import Detector
+    from pipeline.perception import make_detector
     from pipeline.vlm import VLM
     from pipeline.vlm_backends import make_backend
-    an = Analyzer(VLM(make_backend(), max_side=848, cache_dir=ROOT / "cache" / "vlm"), Detector())
+    an = Analyzer(VLM(make_backend(), max_side=848, cache_dir=ROOT / "cache" / "vlm"), make_detector())
     out_dir = ROOT / "reports" / "robustness"
     out_dir.mkdir(parents=True, exist_ok=True)
     rows = []

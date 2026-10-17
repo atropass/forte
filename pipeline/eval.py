@@ -46,10 +46,10 @@ def strip_b64(res: dict) -> dict:
 
 def run(videos: list[str], labels: dict, force: bool):
     from .analyze import Analyzer
-    from .perception import Detector
+    from .perception import make_detector
     from .vlm import VLM
     from .vlm_backends import make_backend
-    an = Analyzer(VLM(make_backend(), max_side=848, cache_dir=ROOT / "cache" / "vlm"), Detector())
+    an = Analyzer(VLM(make_backend(), max_side=848, cache_dir=ROOT / "cache" / "vlm"), make_detector())
     RES_DIR.mkdir(parents=True, exist_ok=True)
     for vid in videos:
         out = RES_DIR / f"{vid}.json"

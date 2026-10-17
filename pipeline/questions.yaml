@@ -48,6 +48,12 @@ questions:
   cashier_at_desk:
     scope: full
     text: Answer yes if any person is sitting or standing at the cashier working place behind the desk, otherwise no.
+  cashier_moving:
+    threshold: 0.5
+    scope: full
+    text: >-
+      Is a person inside the room in motion right now — getting up from the chair or walking — rather than
+      sitting or standing still? People seen through the glass wall do not count.
   cashier_ready:
     threshold: 0.6
     scope: full

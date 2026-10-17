@@ -82,7 +82,7 @@ def load_models():
         import numpy as np
 
         from pipeline.analyze import Analyzer
-        from pipeline.perception import Detector
+        from pipeline.perception import make_detector
         from pipeline.vlm import VLM
         from pipeline.vlm_backends import make_backend
 
@@ -91,7 +91,7 @@ def load_models():
         aux = None
         if aux_id:  # second model for hand-over frames only (V05/V13 ensemble); shares the GPU with the main one
             aux = VLM(make_backend(model_id=aux_id, gpu_util=float(os.getenv("VLLM_GPU_UTIL_AUX", "0.35"))), max_side=848)
-        det = Detector()
+        det = make_detector()
         an = Analyzer(VLM(backend, max_side=848), det, aux_vlm=aux)
         # warm-up: detector batch + one generation + one decision-mode call per model
         dummy = np.full((848, 464, 3), 128, np.uint8)

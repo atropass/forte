@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 from pipeline.analyze import Analyzer  # noqa: E402
-from pipeline.perception import Detector  # noqa: E402
+from pipeline.perception import make_detector  # noqa: E402
 from pipeline.vlm import VLM  # noqa: E402
 from pipeline.vlm_backends import make_backend  # noqa: E402
 
@@ -20,7 +20,7 @@ ap.add_argument("video")
 ap.add_argument("--out", default=None)
 a = ap.parse_args()
 logging.basicConfig(level=logging.INFO, format="%(message)s")
-an = Analyzer(VLM(make_backend(), max_side=848, cache_dir=ROOT / "cache" / "vlm"), Detector())
+an = Analyzer(VLM(make_backend(), max_side=848, cache_dir=ROOT / "cache" / "vlm"), make_detector())
 res = an.analyze(a.video, job_id="demo")
 if a.out:
     Path(a.out).write_text(json.dumps(res, ensure_ascii=False, indent=1))

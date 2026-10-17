@@ -168,7 +168,9 @@ LEAVE_DIRECT_S = 4.0  # stand-up this close to the room becoming empty = walked 
 
 
 def events_from_state(samples: list[StateSample], duration: float, det_ts: np.ndarray,
-                      det_boxes: list[list[np.ndarray]], frame_wh) -> tuple[list[Event], dict]:
+                      det_boxes: list[list[np.ndarray]], frame_wh,
+                      leave_onsets: dict[float, float] | None = None) -> tuple[list[Event], dict]:
+    """leave_onsets: {t_room_empty: start of the walk to the door} from the VLM (used instead of detector boxes)."""
     events: list[Event] = []
     if not samples:
         return events, {}
@@ -195,7 +197,10 @@ def events_from_state(samples: list[StateSample], duration: float, det_ts: np.nd
                 else:
                     # stood up long before leaving (went to the safe first) or never seen seated: the timecode is
                     # the start of the walk to the door = last moment the cashier stood still (detector)
-                    t_leave = _leave_start(t_empty, det_ts, det_boxes, frame_wh)
+                    if leave_onsets is not None and round(t_empty, 2) in leave_onsets:
+                        t_leave = leave_onsets[round(t_empty, 2)]
+                    else:
+                        t_leave = _leave_start(t_empty, det_ts, det_boxes, frame_wh)
                     t_leave = max(t_leave, ts[i - 1] - 6.0, stood_up or 0.0)
                 events.append(Event("cashier_left", round(t_leave, 2), ts[j] if j < n else duration,
                                     conf=1.0 if j - i >= 2 else 0.6, info={"t_room_empty": t_empty}))
