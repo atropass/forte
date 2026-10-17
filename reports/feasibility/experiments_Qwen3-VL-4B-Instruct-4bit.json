@@ -1,0 +1,11 @@
+{
+ "money_on_desk|crop_tight": 0.75,
+ "money_on_desk|crop_tight_p2": 0.625,
+ "money_on_desk|full_p2": 0.625,
+ "door_open|crop": 0.857,
+ "door_open|crop_p2": 0.429,
+ "door_open|full_p2": 0.429,
+ "key_in_safe|crop_tight": 0.143,
+ "handover_mc|full": 0.429,
+ "handover_mc|desk": 0.429
+}

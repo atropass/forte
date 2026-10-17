@@ -1,0 +1,86 @@
+# All VLM prompts live here. Every yes/no question must be answered as
+#   {"answer": "yes|no|unclear", "evidence": "<= 15 words"}
+# `scope` = what image is sent: full frame, a crop around a located object, or several frames.
+preamble: >-
+  You see a frame from a ceiling CCTV camera in a bank cash room (cashier's desk, a grey metal safe,
+  a glass door). Answer strictly from what is visible. Reply with JSON only:
+  {"answer": "yes" | "no" | "unclear", "evidence": "<max 15 words>"}.
+
+questions:
+  safe_open:
+    scope: crop:safe
+    text: Is the door of the grey metal safe (the cabinet) open, so that its inside is visible?
+  key_in_safe:
+    scope: crop:safe
+    text: Is a key (or a key with a tag/bunch) sticking out of the lock on the safe door?
+  money_on_desk:
+    scope: crop:desk
+    text: Are there banknotes or bundles of cash lying on the desk surface (not inside a machine)?
+  bag_on_desk:
+    scope: crop:desk
+    text: Is there a cash-collection bag or sack (fabric bag, often green) lying on the desk?
+  laptop_on:
+    scope: crop:laptop
+    text: >-
+      Does the laptop screen show working content (spreadsheet, documents, application windows)?
+      Answer "no" if the screen is black/off, closed, or shows only a lock screen / wallpaper picture.
+  door_open:
+    scope: full
+    text: Is the glass entrance door of this room standing open (not closed in its frame)?
+  personal_items:
+    scope: crop:desk
+    text: >-
+      Are there personal belongings on the desk — handbag, purse, jacket, food, drink cup or bottle?
+      Work equipment (laptop, phone handset, counting machine, papers, cash) does not count.
+  cashier_at_desk:
+    scope: full
+    text: Answer yes if any person is sitting or standing at the cashier working place behind the desk, otherwise no.
+  cashier_ready:
+    scope: full
+    text: >-
+      A visitor is entering. Answer yes if the cashier is NOT ready to serve: standing, walking, or still
+      setting up equipment instead of sitting at the desk. Answer no if the cashier is seated at the desk.
+  # multi-frame questions (frames in time order)
+  id_shown:
+    scope: frames
+    text: >-
+      These frames are in time order. Does the visitor show or hand an identity document (ID card,
+      passport — a small card) to the cashier at any point?
+  bag_handover:
+    scope: frames
+    text: These frames are in time order. Does a visitor hand a bag or sack to the cashier?
+  banknote_manual_check:
+    scope: frames
+    text: >-
+      These frames are in time order. Does the cashier hold a banknote up and inspect it by hand
+      (look at it against light, feel it, tilt it), outside the counting machine?
+
+handover_first_item:
+  scope: frames
+  text: >-
+    These frames are in time order and show a visitor at a bank cashier's desk. What does the visitor hand
+    to the cashier FIRST? Reply JSON only: {"first_item": "id_document" | "banknotes" | "bag" | "nothing" |
+    "unclear", "evidence": "<max 15 words>"}. An id_document is a small card or passport that the cashier
+    looks at and usually gives back.
+
+presence:
+  scope: full
+  text: >-
+    Frame from a ceiling camera in a bank cash room with a glass wall and glass door. How many people are
+    physically INSIDE this room? Do not count people seen through the glass wall in the corridor, or
+    reflections. Reply JSON only: {"inside": <int>, "evidence": "<max 12 words>"}
+
+open_check:
+  scope: full
+  text: >-
+    The cashier is away from the desk. List any valuables or sensitive items left unattended or
+    unsecured (cash, open safe, key in a lock, cash bag, unlocked screen, documents). Reply JSON:
+    {"items": [{"item": "<name>", "where": "<place>"}], "confidence": "high|medium|low"}
+
+grounding:
+  scope: full
+  text: >-
+    Locate these objects in the image and return JSON only, coordinates in the 0-1000 range
+    relative to image width/height: {"safe": [x1,y1,x2,y2] | null, "desk": [...] | null,
+    "door": [...] | null, "laptop": [...] | null, "counting_machine": [...] | null}.
+    "safe" is the grey metal cabinet/safe; "door" is the glass entrance door of the room.

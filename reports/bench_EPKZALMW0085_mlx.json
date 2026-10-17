@@ -1,0 +1,19 @@
+{
+ "host": "EPKZALMW0085",
+ "platform": "macOS-26.7.1-arm64-arm-64bit-Mach-O",
+ "device": "mps",
+ "video_sec": 142.5,
+ "extract_s": 1.42,
+ "n_frames": 285,
+ "detector_s": 14.72,
+ "detector_ms_per_frame": 51.6,
+ "vlm_backend": "mlx",
+ "vlm_model": "mlx-community/Qwen3-VL-4B-Instruct-4bit",
+ "vlm_load_s": 2.7,
+ "vlm_single_batch_s": 94.71,
+ "vlm_multi_batch_s": 25.98,
+ "vlm_s_per_single": 2.368,
+ "vlm_s_per_multi": 3.248,
+ "projected_total_s": 136.8,
+ "budget_ok_150s": true
+}
