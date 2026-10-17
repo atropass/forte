@@ -11,8 +11,8 @@ This guide details the deployment, architecture, model switching, and team acces
 - **GPU**: 1x NVIDIA GeForce RTX 3090 (24 GB VRAM)
 - **Hourly Cost**: **$0.22 / hour**
 - **Persistent Volume**: 50 GB mounted at `/workspace`
-- **Default Active Model (Dev Testing)**: `Qwen/Qwen2-VL-2B-Instruct` (Fast, lightweight 2.2B VLM)
-- **Production Model**: `Qwen/Qwen3-VL-4B-Instruct` (Available via 1-click model switcher)
+- **Default Active Model**: `Qwen/Qwen3-VL-4B-Instruct` (Production 4B VLM — Currently Active)
+- **Dev Testing Model**: `Qwen/Qwen2-VL-2B-Instruct` (Fast 2.2B VLM via 1-click model switcher)
 - **Process Supervisor**: `supervisord` (auto-restarts vLLM and Nginx on crash or OOM)
 
 ---
