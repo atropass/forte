@@ -8,7 +8,7 @@ below is updated from them.
 | What | Why it fails | Effect |
 |---|---|---|
 | Key left in the safe lock (V03, X-22/X-24) | The lock is ~3 px wide. At 4× zoom a short bar is visible, but no VLM (4B/8B/Qwen2.5-7B) can read it, and a trained lock-patch classifier learns the camera setup instead of the key (`reports/keyclf.md`) | **Missed.** X-46 is still flagged via V01 |
-| Client showed an ID before handing money (V05, X-2/X-34) | An ID card and a small stack of banknotes are both ~10 px; per-frame "card vs cash" answers are the same in ID and no-ID videos | Low recall; fires only on confident answers |
+| Client showed an ID before handing money (V05, X-2/X-34) | An ID card and a small stack of banknotes are both ~10 px. Single-frame "card vs cash" answers are the same in ID and no-ID videos. Now decided on the **sequence** in the episode (card / phone / examining before cash), see `pipeline/handover.py` | Only 2 no-ID episodes in training: reliability unknown until tested on more footage |
 | Collector showed documents (V13, X-17) | The bag handover is visible; the documents are not | Low recall |
 | Small single bundles of money (V03) | 0.75 accuracy on tight desk crops; misses one-note bundles | Possible misses |
 A higher-resolution camera (≥ 1080p) over the desk would fix all four.

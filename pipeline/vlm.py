@@ -15,6 +15,22 @@ from PIL import Image
 from .vlm_backends import VLMBackend, VLMRequest
 
 QUESTIONS = yaml.safe_load((Path(__file__).parent / "questions.yaml").read_text())
+# thresholds written by scripts/calibrate.py override the defaults in questions.yaml
+import os  # noqa: E402
+
+_THR_FILE = Path(os.getenv("THRESHOLDS_FILE", Path(__file__).parent / "thresholds.yaml"))
+THRESHOLDS = yaml.safe_load(_THR_FILE.read_text()) if _THR_FILE.exists() else {}
+
+SCORE_PREAMBLE = (
+    "You see a frame from a ceiling CCTV camera in a bank cash room (cashier's desk, a grey metal safe, a glass "
+    "door). Judge strictly from what is visible."
+)
+
+
+def threshold(qid: str) -> float:
+    if qid in (THRESHOLDS or {}):
+        return float(THRESHOLDS[qid])
+    return float(QUESTIONS["questions"].get(qid, {}).get("threshold", 0.5))
 
 
 @dataclass
@@ -22,6 +38,7 @@ class Answer:
     answer: str  # yes | no | unclear
     evidence: str
     raw: str
+    p: float | None = None  # probability of "yes" (decision mode)
 
     @property
     def yes(self) -> bool:
@@ -120,6 +137,45 @@ class VLM:
     def prompt_for(self, qid: str, text_override: str | None = None) -> str:
         q = QUESTIONS["questions"][qid]
         return QUESTIONS["preamble"].strip() + "\nQuestion: " + (text_override or q["text"]).strip()
+
+    def _scored(self, items: list[tuple[str, list, list[str]]]) -> list[dict[str, float]]:
+        """items: [(prompt, [images], options)] -> option probabilities. Cached + batched."""
+        keys, todo, reqs, opts = [], [], [], []
+        for i, (prompt, imgs, options) in enumerate(items):
+            pil = [to_pil(im, self.max_side) for im in imgs]
+            k = "score:" + self._key(prompt + "|" + ",".join(options), pil)
+            keys.append(k)
+            if k not in self.cache:
+                todo.append(i)
+                reqs.append(VLMRequest(prompt, pil, 1))
+                opts.append(options)
+        if reqs:
+            outs = self.backend.score(reqs, opts)
+            for i, o in zip(todo, outs):
+                self.cache[keys[i]] = json.dumps(o)
+                if self.cache_file:
+                    self.cache_file.parent.mkdir(parents=True, exist_ok=True)
+                    with self.cache_file.open("a") as f:
+                        f.write(json.dumps([keys[i], self.cache[keys[i]]]) + "\n")
+        return [json.loads(self.cache[k]) for k in keys]
+
+    def score_prompt(self, qid: str) -> str:
+        q = QUESTIONS["questions"][qid]
+        return (SCORE_PREAMBLE + "\nQuestion: " + q["text"].strip()
+                + "\nAnswer with exactly one word: yes or no.")
+
+    def prob(self, batch: list[tuple[str, list]]) -> list[Answer]:
+        """Decision mode: batch [(question_id, [images])] -> Answer with p = P(yes); answer by threshold."""
+        res = self._scored([(self.score_prompt(q), imgs, ["yes", "no"]) for q, imgs in batch])
+        out = []
+        for (q, _), r in zip(batch, res):
+            p = float(r.get("yes", 0.0))
+            out.append(Answer("yes" if p >= threshold(q) else "no", f"p(да)={p:.2f}", json.dumps(r), p))
+        return out
+
+    def choose(self, items: list[tuple[str, list, list[str]]]) -> list[dict[str, float]]:
+        """Decision mode, multiple choice: [(prompt, [images], ["A", "B", ...])] -> {option: prob}."""
+        return self._scored(items)
 
     def ask(self, batch: list[tuple[str, list]], text_override: dict | None = None) -> list[Answer]:
         """batch: [(question_id, [images])]"""

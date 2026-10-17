@@ -16,7 +16,8 @@
 
 ## 1. Запуск на GPU-сервере (продакшн, Docker)
 
-Требования: Linux, NVIDIA GPU 24 GB (RTX 4090 / L4 / A10), драйвер + NVIDIA Container Toolkit, Docker Compose v2.
+Требования: Linux VM или выделенный сервер (не «pod»/контейнер), NVIDIA GPU ≥ 24 GB (рекомендуется L40S 48 GB),
+драйвер + NVIDIA Container Toolkit, Docker Compose v2, диск ≥ 100 GB, публичный IP.
 
 ```bash
 cp .env.example .env
@@ -36,10 +37,47 @@ docker compose up -d --build
 Готовность (модели загружаются ~1–3 мин): `curl http://<host>/healthz` → `"ok": true`.
 UI: `http://<host>/` (API-ключ вводится в правом верхнем углу, хранится только в браузере).
 
-Проверка бюджета времени на этом сервере (нужны веса и видео в `open/videos/`):
+### 1.1 Проверка задеплоенной версии (порядок)
+
+Скопируйте обучающие видео на сервер в `open/videos/` (они монтируются в контейнер только для
+калибровки и бенчмарка, в образ не попадают).
+
+**Шаг 1 — калибровка порогов** под эту модель и этот GPU. Сервис нужно остановить: вторая копия
+модели рядом с работающим vLLM не поместится в память GPU.
 ```bash
-docker compose exec backend python3 scripts/bench.py
+docker compose stop backend
 ```
+```bash
+docker compose run --rm backend python3 scripts/calibrate.py
+```
+Пороги пишутся в `data_service/thresholds.yaml` (переживают пересборку), отчёт — в `reports/calibration.md`
+внутри контейнера (выводится в консоль).
+```bash
+docker compose start backend
+```
+
+**Шаг 2 — прогон всех обучающих видео через публичный API**, как это сделает жюри (с ноутбука):
+```bash
+.venv/bin/python scripts/eval_remote.py --url http://<host> --key <API_KEY>
+```
+Метрики (точность, полнота, ложные срабатывания, ошибка таймкода) — в `reports/eval_remote.md`,
+ответы — в `reports/eval/remote/`. Каждый ответ проверяется на соответствие схеме ТЗ.
+
+**Шаг 3 — нагрузка как у жюри** (5 видео одновременно, у каждого должно быть ≤ 5 мин с учётом очереди):
+```bash
+.venv/bin/python scripts/eval_remote.py --url http://<host> --key <API_KEY> --parallel 5 --only X-14,X-39,X-4,X-38,X-13 --force
+```
+
+Отдельный бенчмарк по этапам (тоже при остановленном backend):
+```bash
+docker compose run --rm backend python3 scripts/bench.py
+```
+
+### 1.2 Вторая модель для удостоверений (необязательно, GPU 48 GB)
+
+Для эпизодов передачи (V05 удостоверение клиента, V13 документы инкассатора) можно усреднять ответы
+двух моделей. В `.env`: `VLM_AUX_MODEL=Qwen/Qwen2.5-VL-7B-Instruct`, веса:
+`AUX_MODEL=Qwen/Qwen2.5-VL-7B-Instruct scripts/download_weights.sh`. Сравните `eval_remote.py` с ней и без неё.
 
 ## 2. Локальный запуск на Mac (Apple silicon, MLX) — разработка/демо
 
@@ -94,6 +132,8 @@ description, evidence_frames[timestamp_sec, image_base64]]`). Дополните
 | `make bench` | бюджет времени на ролик 145 с |
 | `make eval` | Фаза 4: все обучающие видео → `reports/eval.md` |
 | `python scripts/robustness.py` | Фаза 5: устойчивость к ракурсу → `reports/robustness.md` |
-| `make test` | контрактные тесты API (без моделей) |
+| `make test` | тесты API и логики решений (без моделей) |
+| `scripts/calibrate.py` | подбор порогов под модель → `thresholds.yaml`, `reports/calibration.md` |
+| `scripts/eval_remote.py` | оценка задеплоенного сервиса через API → `reports/eval_remote.md` |
 
 Датасет конфиденциален и в репозиторий не входит (`open/`, `*.mov`, `Yerkes.xlsx` в `.gitignore`).

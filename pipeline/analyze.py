@@ -18,13 +18,14 @@ from typing import Callable
 import numpy as np
 
 from . import evidence as ev
+from . import handover
 from .frames import extract_frames, frame_at, probe
 from .keyclf import KeyClassifier
 from .legal import legal_ref
 from .perception import Detector, Scene, in_room
 from .rules import decide, plan
 from .timeline import StateSample, events_from_state
-from .vlm import QUESTIONS, VLM, image_for, parse_json, to_pil
+from .vlm import QUESTIONS, VLM, crop_box, image_for, parse_json, to_pil, upscale_min
 
 log = logging.getLogger("analyze")
 
@@ -43,24 +44,59 @@ EVIDENCE_LABEL = {"safe": "сейф", "desk": "стол", "laptop": "ноутб�
 Progress = Callable[[str, float], None]
 
 
+def _dbg_answer(a):
+    if isinstance(a, handover.EpisodeResult):
+        return {"kind": a.kind, "t": a.t, "conf": a.confidence, "id_seen_at": a.id_seen_at,
+                "first_cash": a.first_cash, "first_bag": a.first_bag, "trace": a.trace}
+    if getattr(a, "p", None) is not None:
+        return round(a.p, 3)
+    return getattr(a, "answer", a)
+
+
 def state_step(duration: float) -> float:
+    """Coarse step of the scene-state pass; changes are then refined to REFINE_STEP."""
     if duration <= 40:
-        return 1.0
+        return 1.5
     if duration <= 90:
-        return 2.0
-    return 2.5
+        return 2.5
+    return 3.0
+
+
+REFINE_STEP = 0.5
+
+
+def handover_crop(frame: np.ndarray, scene_boxes: dict) -> np.ndarray:
+    """Desk plus the space above it where hands meet, native resolution, upscaled so small items get pixels."""
+    desk = scene_boxes.get("desk")
+    if not desk:
+        return frame
+    x1, y1, x2, y2 = desk
+    zone = [x1, max(0.0, y1 - 0.6 * (y2 - y1)), x2, y2]  # extend upwards: visitor's and cashier's hands
+    return upscale_min(crop_box(frame, zone, pad=0.12), min_side=560)
+
+
+def refine_times(samples: list[StateSample], have: set[float]) -> list[float]:
+    """Extra sample times between neighbours whose state differs (who is inside / seated / visitor)."""
+    extra = []
+    for a, b in zip(samples, samples[1:]):
+        if (a.inside, a.seated, a.visitor) != (b.inside, b.seated, b.visitor):
+            t = a.t + REFINE_STEP
+            while t < b.t - 1e-6:
+                if round(t, 2) not in have:
+                    extra.append(round(t, 2))
+                t += REFINE_STEP
+    return extra
 
 
 class Analyzer:
-    def __init__(self, vlm: VLM, detector: Detector, key_clf: KeyClassifier | None = None):
+    def __init__(self, vlm: VLM, detector: Detector, key_clf: KeyClassifier | None = None, aux_vlm: VLM | None = None):
         self.vlm = vlm
         self.det = detector
         self.key_clf = key_clf if key_clf is not None else KeyClassifier.load_default()
+        self.aux_vlm = aux_vlm  # optional second model, used only on hand-over frames (VLM_AUX_MODEL)
 
     # ------------------------------------------------------------------ stages
-    def scene_state(self, path: Path, duration: float) -> list[StateSample]:
-        step = state_step(duration)
-        times = list(np.arange(0.5, max(duration - 0.2, 0.6), step))
+    def _state_at(self, path: Path, times: list[float]) -> list[StateSample]:
         frames = [frame_at(path, float(t)) for t in times]
         raws = self.vlm.raw([(QUESTIONS["state"]["text"].strip(), [f]) for f in frames], max_tokens=60)
         out = []
@@ -73,6 +109,16 @@ class Analyzer:
             out.append(StateSample(round(float(t), 2), max(0, min(n, 9)), bool(j.get("cashier_seated")),
                                    bool(j.get("visitor_at_desk"))))
         return out
+
+    def scene_state(self, path: Path, duration: float) -> list[StateSample]:
+        """Adaptive: coarse pass over the whole video, then 0.5-s refinement only where the state changes.
+        ~2-3x fewer VLM calls than a dense pass, and event times (timecodes) at 0.5-s resolution."""
+        coarse = [round(float(t), 2) for t in np.arange(0.5, max(duration - 0.2, 0.6), state_step(duration))]
+        samples = self._state_at(path, coarse)
+        extra = refine_times(samples, set(coarse))
+        if extra:
+            samples = sorted(samples + self._state_at(path, extra), key=lambda s: s.t)
+        return samples
 
     def analyze(self, path: str | Path, job_id: str = "", progress: Progress | None = None) -> dict:
         path = Path(path)
@@ -150,7 +196,7 @@ class Analyzer:
             "_debug": {"events": [e.__dict__ for e in events], "state": dbg, "grounding": g, "timing_sec": timing,
                        "n_vlm_checks": len(checks), "duration_sec": round(info.duration, 2),
                        "checks": [{"rule": c.rule, "q": c.question, "t": round(c.trigger_t, 2), "times": [round(x, 2) for x in c.times],
-                                   "answers": [getattr(a, "answer", a) for a in c.answers]} for c in checks]},
+                                   "answers": [_dbg_answer(a) for a in c.answers]} for c in checks]},
         }
 
     # ------------------------------------------------------------------ VLM batch
@@ -163,13 +209,12 @@ class Analyzer:
                 cache[k] = frame_at(path, k)
             return cache[k]
 
-        single, multi_items, open_items = [], [], []
+        single, open_items, episodes = [], [], {}
         for ci, c in enumerate(checks):
             if not c.question:
                 continue
-            if c.question == "handover_first_item":
-                imgs = [to_pil(image_for("bag_handover", fr(t), scene_boxes), 512) for t in c.times]
-                multi_items.append((ci, imgs))
+            if c.question == "handover_sequence":
+                episodes.setdefault((round(c.trigger_t, 2), tuple(c.times)), []).append(ci)
             elif c.question == "open_check":
                 open_items.append((ci, fr(c.times[0])))
             elif c.question == "key_in_safe" and self.key_clf is not None and scene_boxes.get("safe"):
@@ -178,16 +223,25 @@ class Analyzer:
             else:
                 for t in c.times:
                     single.append((ci, c.question, image_for(c.question, fr(t), scene_boxes)))
-        if single:
-            answers = self.vlm.ask([(q, [img]) for _, q, img in single])
+        if single:  # decision mode: one forward pass per frame, P(yes)
+            answers = self.vlm.prob([(q, [img]) for _, q, img in single])
             for (ci, _, _), a in zip(single, answers):
                 checks[ci].answers.append(a)
-        if multi_items:
-            prompt = QUESTIONS["handover_first_item"]["text"].strip() + \
-                " Also give \"frame\": <1-based index of the frame where it is handed over>."
-            raws = self.vlm.raw([(prompt, imgs) for _, imgs in multi_items], max_tokens=80)
-            for (ci, _), r in zip(multi_items, raws):
-                checks[ci].answers.append(parse_json(r) or {})
+        if episodes:  # one sequence analysis per visitor episode, shared by V05 and V13
+            items, index = [], []
+            for key, cis in episodes.items():
+                for t in key[1]:
+                    items.append((handover.PROMPT, [handover_crop(fr(t), scene_boxes)], handover.OPTIONS))
+                    index.append(key)
+            probs = self.vlm.choose(items)
+            if self.aux_vlm is not None:  # ensemble: average the two models' probabilities frame by frame
+                aux = self.aux_vlm.choose(items)
+                probs = [{o: (p.get(o, 0) + q.get(o, 0)) / 2 for o in handover.OPTIONS} for p, q in zip(probs, aux)]
+            for key, cis in episodes.items():
+                ep = [p for k, p in zip(index, probs) if k == key]
+                res = handover.decide_episode(list(key[1]), ep)
+                for ci in cis:
+                    checks[ci].answers.append(res)
         if open_items:
             raws = self.vlm.raw([(QUESTIONS["open_check"]["text"].strip(), [img]) for _, img in open_items], max_tokens=160)
             for (ci, _), r in zip(open_items, raws):

@@ -62,10 +62,10 @@ def run(videos: list[str], labels: dict, force: bool):
               f"label={labels[vid]['codes']}@{labels[vid]['tc']} ({time.time() - t:.0f}s)", flush=True)
 
 
-def metrics(labels: dict) -> str:
+def metrics(labels: dict, res_dir: Path = RES_DIR, out_md: Path | None = None, title: str | None = None) -> str:
     rows = []
     for vid, lab in sorted(labels.items(), key=lambda x: int(x[0].split("-")[1])):
-        f = RES_DIR / f"{vid}.json"
+        f = res_dir / f"{vid}.json"
         if not f.exists():
             continue
         res = json.loads(f.read_text())
@@ -85,11 +85,12 @@ def metrics(labels: dict) -> str:
                          type_ok="" if type_ok is None else int(type_ok),
                          tc_err="" if tc_err is None else round(tc_err, 1),
                          tc_err_any="" if tc_err_any is None else round(tc_err_any, 1),
-                         timing=json.dumps(res.get("_debug", {}).get("timing_sec", {}))))
+                         timing=json.dumps(res.get("_debug", {}).get("timing_sec", res.get("_wall_s", {})))))
     if not rows:
         return "no results"
-    (ROOT / "reports" / "eval").mkdir(parents=True, exist_ok=True)
-    with (ROOT / "reports" / "eval" / "per_video.csv").open("w", newline="") as fh:
+    out_md = out_md or ROOT / "reports" / "eval.md"
+    out_md.parent.mkdir(parents=True, exist_ok=True)
+    with out_md.with_name(out_md.stem + "_per_video.csv").open("w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0]))
         w.writeheader()
         w.writerows(rows)
@@ -103,7 +104,7 @@ def metrics(labels: dict) -> str:
     errs = sorted(r["tc_err"] for r in pos if r["tc_err"] != "")
     import statistics as st
     lines = [
-        "# Phase 4 — Evaluation on the training videos", "",
+        f"# {title or 'Phase 4 — Evaluation on the training videos'}", "",
         f"Videos: {len(rows)} unique ({len(pos)} with violation, {len(neg)} clean). Duplicates X-47/X-48 excluded.", "",
         "| metric | value |", "|---|---|",
         f"| video-level verdict accuracy | **{acc:.3f}** ({sum(r['verdict_ok'] for r in rows)}/{len(rows)}) |",
@@ -119,7 +120,7 @@ def metrics(labels: dict) -> str:
         lines.append(f"| {r['video']} | {r['label']} | {r['label_codes']} @ {r['label_tc']} | {r['pred_codes'] or '—'} | "
                      f"{'✅' if r['verdict_ok'] else '❌'} | {'' if r['type_ok'] == '' else ('✅' if r['type_ok'] else '❌')} | {r['tc_err']} |")
     md = "\n".join(lines)
-    (ROOT / "reports" / "eval.md").write_text(md)
+    out_md.write_text(md)
     return md
 
 

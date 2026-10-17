@@ -9,7 +9,7 @@
            │                                     stood up / turned away)         │  └──────┬───────┘
            │  1 frame                                                            │         │
            ├─► Qwen3-VL grounding ── safe / desk / door / laptop boxes (per video)│         │
-           │  every 1–2.5 s, native 464×848                                      ▼         │
+           │  coarse 1.5–3 s + 0.5-s refinement where state changes, 464×848     ▼         │
            ├─► Qwen3-VL scene state ── {people INSIDE, cashier seated, visitor at desk}    │
            │                     │                                                     │
            │                     ▼                                                     │
@@ -19,7 +19,10 @@
            │                     ▼                                                     │
            │        rules.py plan(): which yes/no questions, on which frames & crops     │
            │                     │                                                     │
-           └─► Qwen3-VL checks (one batch) ── crops of grounded objects, 2-of-3 voting   │
+           ├─► Qwen3-VL checks, decision mode (1 forward pass → P(yes)) on object crops,  │
+           │   2-of-3 frames or mean ≥ calibrated threshold                              │
+           └─► visitor episodes, 2 fps desk-zone crops → P(card / phone / cash / bag /    │
+               examining) per frame → sequence logic (ID before money?)  [+ optional 2nd model]
                                  │                                                     │
                                  ▼                                                     ▼
                      rules.py decide() ──► violations ──► evidence.py (JPEG + box) ──► JSON (spec schema)
@@ -32,6 +35,7 @@
 | `pipeline/vlm_backends.py` | `VLMBackend` interface: `mlx` (Mac dev) and `vllm` (GPU server), chosen by `VLM_BACKEND` |
 | `pipeline/vlm.py` + `questions.yaml` | every prompt in one file; batching, on-disk cache, strict JSON parsing, crops |
 | `pipeline/timeline.py` | events from the scene-state pass, refined by detector motion |
+| `pipeline/handover.py` | visitor-episode sequence analysis for V05 (client ID) and V13 (collector documents) |
 | `pipeline/rules.py` + `rules.yaml` | one entry per rule: trigger, checks, voting, timecode convention, description template, legal ref |
 | `pipeline/legal.py` + `legal/norms.yaml` | legal references are looked up, never generated |
 | `pipeline/evidence.py` | 1–3 evidence frames with the relevant object outlined |
@@ -50,6 +54,14 @@
   The detector is still used for *when* the cashier started leaving, at 2 fps.
 * **Two signals per violation where possible**: an event from the timeline plus ≥2 of 3 frames agreeing on
   the VLM check. Periodic checks need two consecutive positive samples.
+* **Decision mode instead of free text.** For yes/no and multiple-choice checks the model is not asked to
+  write an answer. We read the probability of the first answer token (`VLMBackend.score`, logprobs in
+  vLLM / MLX). One forward pass per frame: faster, no "unclear", and a confidence that thresholds can be
+  calibrated on (`scripts/calibrate.py` → `thresholds.yaml`).
+* **ID checks look at the sequence, not one frame.** An ID card and a stack of banknotes are both ~10 px,
+  but "visitor holds out a card / shows a phone / cashier examines a small item → then cash goes to the
+  counting machine" is visible. `pipeline/handover.py` scores every frame of a visitor episode and decides
+  on the order of events. A phone screen counts as ID (digital documents, п.19 пп.1).
 * **Legal references never come from a model.** They are looked up in `legal/norms.yaml`, and every clause
   was checked against the act text (`legal/catalog_verification.md`).
 
