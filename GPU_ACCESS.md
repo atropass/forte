@@ -6,10 +6,10 @@ This guide details the deployment, architecture, model switching, and team acces
 
 ## 1. Server Specification
 
-- **Provider**: RunPod
-- **Pod ID**: `hwghc0pbdxkkfo`
+- **Provider**: RunPod (Community Cloud)
+- **Pod ID**: `tw6jhre43eeunm`
 - **GPU**: 1x NVIDIA GeForce RTX 3090 (24 GB VRAM)
-- **Hourly Cost**: $0.50 / hour
+- **Hourly Cost**: **$0.22 / hour**
 - **Persistent Volume**: 50 GB mounted at `/workspace`
 - **Default Active Model (Dev Testing)**: `Qwen/Qwen2-VL-2B-Instruct` (Fast, lightweight 2.2B VLM)
 - **Production Model**: `Qwen/Qwen3-VL-4B-Instruct` (Available via 1-click model switcher)
@@ -21,12 +21,12 @@ This guide details the deployment, architecture, model switching, and team acces
 
 The server exposes standard OpenAI-compatible endpoints directly over HTTPS:
 
-- **Base URL**: `https://hwghc0pbdxkkfo-8000.proxy.runpod.net/v1`
+- **Base URL**: `https://tw6jhre43eeunm-8000.proxy.runpod.net/v1`
 - **Bearer Token**: `fv-prod-secret-forte-2026`
-- **Health Check**: `https://hwghc0pbdxkkfo-8000.proxy.runpod.net/health`
-- **Prometheus Metrics**: `https://hwghc0pbdxkkfo-8000.proxy.runpod.net/metrics`
-- **Model List**: `https://hwghc0pbdxkkfo-8000.proxy.runpod.net/v1/models`
-- **Chat / Vision**: `https://hwghc0pbdxkkfo-8000.proxy.runpod.net/v1/chat/completions`
+- **Health Check**: `https://tw6jhre43eeunm-8000.proxy.runpod.net/health`
+- **Prometheus Metrics**: `https://tw6jhre43eeunm-8000.proxy.runpod.net/metrics`
+- **Model List**: `https://tw6jhre43eeunm-8000.proxy.runpod.net/v1/models`
+- **Chat / Vision**: `https://tw6jhre43eeunm-8000.proxy.runpod.net/v1/chat/completions`
 
 ---
 
@@ -36,14 +36,14 @@ The pod includes an automated model switcher (`scripts/switch_model.sh`):
 
 ### Switch to Lightweight Dev Model (Default, Ultra-Fast):
 ```bash
-ssh -i ~/.ssh/id_ed25519 -p 40063 root@213.192.2.117 "/workspace/forte/scripts/switch_model.sh dev"
+ssh -i ~/.ssh/id_ed25519 -p 42346 root@80.15.7.37 "/workspace/forte/scripts/switch_model.sh dev"
 ```
 * **Model**: `Qwen/Qwen2-VL-2B-Instruct`
-* **VRAM**: ~4.5 GB, 230+ tokens/sec throughput, instant testing.
+* **VRAM**: ~4.5 GB, 150+ tokens/sec throughput, instant testing.
 
 ### Switch to Production Accuracy Model:
 ```bash
-ssh -i ~/.ssh/id_ed25519 -p 40063 root@213.192.2.117 "/workspace/forte/scripts/switch_model.sh prod"
+ssh -i ~/.ssh/id_ed25519 -p 42346 root@80.15.7.37 "/workspace/forte/scripts/switch_model.sh prod"
 ```
 * **Model**: `Qwen/Qwen3-VL-4B-Instruct`
 * **VRAM**: ~8.5 GB, full legal/banking compliance prompt fidelity.
@@ -58,7 +58,7 @@ ssh -i ~/.ssh/id_ed25519 -p 40063 root@213.192.2.117 "/workspace/forte/scripts/s
 from sdk.client import VLLMClient
 
 client = VLLMClient(
-    base_url="https://hwghc0pbdxkkfo-8000.proxy.runpod.net/v1",
+    base_url="https://tw6jhre43eeunm-8000.proxy.runpod.net/v1",
     api_key="fv-prod-secret-forte-2026",
     model="Qwen/Qwen2-VL-2B-Instruct"  # or "Qwen/Qwen3-VL-4B-Instruct"
 )
@@ -76,7 +76,7 @@ print(client.analyze_image("What objects do you see on the desk?", "path/to/fram
 import { VLLMClient } from "@/sdk/client";
 
 const client = new VLLMClient({
-  baseUrl: "https://hwghc0pbdxkkfo-8000.proxy.runpod.net/v1",
+  baseUrl: "https://tw6jhre43eeunm-8000.proxy.runpod.net/v1",
   apiKey: "fv-prod-secret-forte-2026",
   model: "Qwen/Qwen2-VL-2B-Instruct",
 });
@@ -87,7 +87,7 @@ const answer = await client.chat("Is the cashier desk unattended?");
 ### C. Direct `curl`
 
 ```bash
-curl -s https://hwghc0pbdxkkfo-8000.proxy.runpod.net/v1/chat/completions \
+curl -s https://tw6jhre43eeunm-8000.proxy.runpod.net/v1/chat/completions \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer fv-prod-secret-forte-2026" \
   -d '{
@@ -108,14 +108,14 @@ Tested with `scripts/bench_vllm_prod.py`:
 ```
 User     Status     Latency (s)    Tokens   Tok/s   
 -----------------------------------------------------------------
-User 1   success    1.10           87       78.9    
-User 2   success    1.10           87       78.8    
-User 3   success    1.08           84       77.6    
+User 1   success    1.66           97       58.5    
+User 2   success    1.53           87       56.8    
+User 3   success    1.24           64       51.7    
 -----------------------------------------------------------------
-Total Wall Time:          1.11 s
-Total Tokens Generated:   258
-Aggregate Throughput:     232.4 tokens/sec
-Average Per-User Latency: 1.09 s
+Total Wall Time:          1.66 s
+Total Tokens Generated:   248
+Aggregate Throughput:     149.4 tokens/sec
+Average Per-User Latency: 1.48 s
 ```
 
 ---
@@ -124,7 +124,7 @@ Average Per-User Latency: 1.09 s
 
 Connect directly:
 ```bash
-ssh -i ~/.ssh/id_ed25519 -p 40063 root@213.192.2.117
+ssh -i ~/.ssh/id_ed25519 -p 42346 root@80.15.7.37
 ```
 
 Inside the pod:

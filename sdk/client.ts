@@ -16,9 +16,9 @@ export class VLLMClient {
   private timeoutMs: number;
 
   constructor(config: VLLMClientConfig = {}) {
-    this.baseUrl = (config.baseUrl ?? "https://h2mcn28299gso1-8000.proxy.runpod.net/v1").replace(/\/$/, "");
+    this.baseUrl = (config.baseUrl ?? "https://tw6jhre43eeunm-8000.proxy.runpod.net/v1").replace(/\/$/, "");
     this.apiKey = config.apiKey ?? "fv-prod-secret-forte-2026";
-    this.model = config.model ?? "Qwen/Qwen3-VL-4B-Instruct";
+    this.model = config.model ?? "Qwen/Qwen2-VL-2B-Instruct";
     this.timeoutMs = config.timeoutMs ?? 60000;
   }
 

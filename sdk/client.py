@@ -9,9 +9,9 @@ from pathlib import Path
 
 
 class VLLMClient:
-    def __init__(self, base_url: str = "https://h2mcn28299gso1-8000.proxy.runpod.net/v1",
+    def __init__(self, base_url: str = "https://tw6jhre43eeunm-8000.proxy.runpod.net/v1",
                  api_key: str = "fv-prod-secret-forte-2026",
-                 model: str = "Qwen/Qwen3-VL-4B-Instruct",
+                 model: str = "Qwen/Qwen2-VL-2B-Instruct",
                  timeout: float = 60.0):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
