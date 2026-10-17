@@ -1,0 +1,579 @@
+{
+  "metadata": {
+    "project": "Datathon 26 — ForteBank AI Cash Compliance Service",
+    "jurisdiction": "Republic of Kazakhstan (NBRK / ARDFM / adilet.zan.kz)",
+    "version": "1.0.0",
+    "updated_at": "2026-10-17",
+    "constraints": {
+      "local_inference_only": true,
+      "no_cloud_llm_api": true,
+      "no_facial_recognition": true,
+      "visual_evidence_only": true,
+      "max_processing_time_sec": 300
+    }
+  },
+  "regulatory_sources": [
+    {
+      "id": "NBRK_231",
+      "short_name_ru": "Постановление Правления НБРК от 29.11.2019 № 231 (Правила осуществления кассовых операций и операций по инкассации)",
+      "short_name_en": "NBRK Board Resolution No. 231 dated 29.11.2019 (Rules for Conducting Cash Operations and Inkassatsiya)",
+      "full_title_ru": "Об утверждении Правил осуществления кассовых операций и операций по инкассации банкнот, монет и ценностей в банках второго уровня, филиалах банков-нерезидентов Республики Казахстан, Национальном операторе почты и юридических лицах, исключительной деятельностью которых является инкассация банкнот, монет и ценностей",
+      "ministry_of_justice_reg_no": "19680",
+      "amendments": [
+        "Постановление Правления НБРК от 28.02.2022 № 19",
+        "Постановление Правления НБРК от 19.12.2022 № 125",
+        "Постановление Правления НБРК от 10.11.2025 № 71 (V2500037429)",
+        "Постановление Правления НБРК от 16.03.2026 № 25 (V2600038217)",
+        "Постановление Правления НБРК от 30.06.2026 № 78 (V2600039191)"
+      ],
+      "adilet_url": "https://adilet.zan.kz/rus/docs/V1900019680"
+    },
+    {
+      "id": "NBRK_14",
+      "short_name_ru": "Постановление Правления НБРК от 24.02.2020 № 14 (Правила организации охраны и устройства помещений банков)",
+      "short_name_en": "NBRK Board Resolution No. 14 dated 24.02.2020 (Rules for Organizing Security and Arrangement of Bank Premises)",
+      "full_title_ru": "Об утверждении Правил организации охраны и устройства помещений банков второго уровня, филиалов банков-нерезидентов Республики Казахстан, Национального оператора почты, юридических лиц, исключительной деятельностью которых является инкассация банкнот, монет и ценностей, и юридических лиц, осуществляющих деятельность исключительно через обменные пункты на основании лицензии Национального Банка Республики Казахстан на обменные операции с наличной иностранной валютой",
+      "ministry_of_justice_reg_no": "20075",
+      "amendments": [
+        "Постановление Правления НБРК от 24.12.2024 № 88 (V2400035552)"
+      ],
+      "adilet_url": "https://adilet.zan.kz/rus/docs/V2000020075"
+    },
+    {
+      "id": "NBRK_49",
+      "short_name_ru": "Постановление Правления НБРК от 04.04.2019 № 49 (Правила осуществления обменных операций с наличной иностранной валютой)",
+      "short_name_en": "NBRK Board Resolution No. 49 dated 04.04.2019 (Rules for Conducting Exchange Operations with Foreign Cash)",
+      "full_title_ru": "Об утверждении Правил осуществления обменных операций с наличной иностранной валютой в Республике Казахстан",
+      "ministry_of_justice_reg_no": "18545",
+      "amendments": [
+        "Постановление Правления НБРК от 26.09.2023 № 72",
+        "Постановление Правления НБРК от 23.06.2025 № 34",
+        "Постановление Правления НБРК от 02.12.2025 № 93",
+        "Постановление Правления НБРК от 30.06.2026 № 78"
+      ],
+      "adilet_url": "https://adilet.zan.kz/rus/docs/V1900018545"
+    },
+    {
+      "id": "NBRK_230",
+      "short_name_ru": "Постановление Правления НБРК от 29.11.2017 № 230 (Правила определения платежности банкнот и монет)",
+      "short_name_en": "NBRK Board Resolution No. 230 dated 29.11.2017 (Rules for Determining Fitness of Banknotes and Coins)",
+      "full_title_ru": "Об утверждении Правил определения платежности банкнот и монет национальной валюты Республики Казахстан",
+      "ministry_of_justice_reg_no": "16120",
+      "adilet_url": "https://adilet.zan.kz/rus/docs/V1700016120"
+    },
+    {
+      "id": "NBRK_159",
+      "short_name_ru": "Постановление Правления НБРК от 12.09.2019 № 159 (Инструкция по организации автомобильных инкассаторских перевозок)",
+      "short_name_en": "NBRK Board Resolution No. 159 dated 12.09.2019 (Instruction on Motor CIT Transportation)",
+      "full_title_ru": "Об утверждении Инструкции по организации автомобильных инкассаторских перевозок в Республике Казахстан",
+      "ministry_of_justice_reg_no": "19391",
+      "adilet_url": "https://adilet.zan.kz/rus/docs/V1900019391"
+    },
+    {
+      "id": "ARDFM_188",
+      "short_name_ru": "Постановление Правления АРРФР / НБРК № 188 (Правила формирования системы управления рисками и внутреннего контроля для банков)",
+      "short_name_en": "ARDFM / NBRK Resolution No. 188 (Rules for Risk Management and Internal Control System for Banks)",
+      "full_title_ru": "Об утверждении Правил формирования системы управления рисками и внутреннего контроля для банков и филиалов банков-нерезидентов Республики Казахстан",
+      "ministry_of_justice_reg_no": "19632",
+      "adilet_url": "https://adilet.zan.kz/rus/docs/V1900019632"
+    }
+  ],
+  "violations": [
+    {
+      "code": "V01",
+      "category": "workstation_discipline",
+      "event_nature": "commission",
+      "type_ru": "Наличие личных вещей или использование мобильного телефона в кассе",
+      "type_en": "Personal belongings or use of a smartphone in the cash desk",
+      "visual_cues_ru": [
+        "Кассир держит в руках, использует смартфон (смотрит на экран, печатает, фотографирует, звонит) на рабочем месте в кассе",
+        "На рабочем столе кассира или в помещении кассы находятся личные вещи (личная сумка, рюкзак, кошелек, личные деньги, еда)"
+      ],
+      "visual_cues_en": [
+        "Cashier holds or uses a smartphone (looking at screen, typing, taking photos, calling) at the cash workstation",
+        "Personal items (handbag, backpack, personal wallet, personal cash, food) are present on the cashier's desk or inside the booth"
+      ],
+      "cv_objects": ["cell phone", "handbag", "backpack", "wallet", "person"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 1, пункт 12 (в ред. Постановления НБРК от 10.11.2025 № 71)",
+          "quote_ru": "Хранение личных вещей, наличных денег и ценностей работников банка осуществляется вне кассового узла в порядке, установленном внутренними документами банка. Допускается внос работниками банка в кассовый узел лекарственных средств, медицинских изделий и средств связи, не имеющих функции фото и видео фиксации."
+        }
+      ],
+      "description_template_ru": "На видео зафиксировано, что кассир использует смартфон (средство связи с функцией фото- и видеофиксации) и/или хранит личные вещи на рабочем месте в помещении кассы. Это нарушает п. 12 Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231), согласно которому хранение личных вещей, наличных денег и ценностей работников банка осуществляется вне кассового узла, а внос средств связи допускается только при отсутствии функции фото- и видеофиксации.",
+      "description_template_en": "The video shows the cashier using a smartphone (a communication device with photo/video recording capability) and/or keeping personal belongings on the workstation inside the cash booth. This violates Clause 12 of the Rules for Conducting Cash Operations (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    },
+    {
+      "code": "V02",
+      "category": "workstation_discipline",
+      "event_nature": "commission",
+      "type_ru": "Оставление рабочего места кассиром во время обслуживания клиента",
+      "type_en": "Cashier leaving the workstation during client service",
+      "visual_cues_ru": [
+        "Клиент находится у окна кассы, операция не завершена (деньги или документы на столе), а кассир встает и покидает рабочее место / выходит из кассы"
+      ],
+      "visual_cues_en": [
+        "Client is at the cash window with an active transaction (cash or documents on the desk), and the cashier stands up and leaves the workstation/booth"
+      ],
+      "cv_objects": ["person", "chair", "door", "cash", "documents"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 2, пункт 22",
+          "quote_ru": "Кассовому работнику не допускается покидать рабочее место до окончания обслуживания клиента."
+        }
+      ],
+      "description_template_ru": "На видео видно, что кассир покидает свое рабочее место до завершения кассовой операции, пока клиент находится у окна кассы. Это является нарушением п. 22 Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231), прямо запрещающего кассовому работнику покидать рабочее место до окончания обслуживания клиента.",
+      "description_template_en": "The video shows the cashier leaving the workstation before completing the transaction while the client is still being served at the window. This violates Clause 22 of the Rules for Conducting Cash Operations (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    },
+    {
+      "code": "V03",
+      "category": "workstation_discipline",
+      "event_nature": "commission",
+      "type_ru": "Нарушение порядка хранения наличных денег на рабочем месте кассира (неубранная наличность / открытый сейф)",
+      "type_en": "Unsecured previously accepted cash on the desk or unlocked safe/drawer",
+      "visual_cues_ru": [
+        "Во время обслуживания клиента на столе кассира лежат пачки/купюры от предыдущих операций, не относящиеся к текущему клиенту",
+        "После завершения обслуживания клиента принятые деньги оставлены на столе и не убраны в сейф/тумбу/шкаф под ключ",
+        "Дверца сейфа, металлического шкафа или тумбы с наличными деньгами оставлена открытой и незапертой"
+      ],
+      "visual_cues_en": [
+        "Previously accepted cash bundles/notes from prior transactions remain openly on the desk while serving a new client",
+        "Accepted cash is left on the desk after client service instead of being locked in a safe/cabinet/drawer",
+        "The safe door or cash storage cabinet/drawer is left open and unlocked"
+      ],
+      "cv_objects": ["cash_bundle", "banknotes", "safe", "drawer", "desk"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 2, пункт 20 (абзац 2); Параграф 8, пункт 80",
+          "quote_ru": "На рабочем месте кассового работника находятся наличные деньги клиента. Все ранее принятые наличные деньги хранятся в специальных устройствах, находящихся на рабочем месте кассового работника, закрывающихся на ключ, предназначенных для хранения наличных денег (металлический шкаф, сейф, тележка, ящики стола, тумба)."
+        }
+      ],
+      "description_template_ru": "На видео видно, что на рабочем столе кассира находятся ранее принятые наличные деньги от других операций (либо специальное устройство для хранения денег — сейф/металлический шкаф/тумба — оставлено открытым). Это нарушает абзац второй п. 20 Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231), согласно которому на столе могут находиться только деньги текущего клиента, а все ранее принятые деньги должны храниться в закрывающихся на ключ специальных устройствах.",
+      "description_template_en": "The video shows previously accepted cash left openly on the cashier's desk during client service (or the safe/cash storage unit left unlocked and open). This violates Clause 20 (paragraph 2) of the Rules for Conducting Cash Operations (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    },
+    {
+      "code": "V04",
+      "category": "cash_acceptance",
+      "event_nature": "commission",
+      "type_ru": "Смешивание наличных денег при приеме по нескольким приходным документам",
+      "type_en": "Mixing cash when accepting funds under multiple incoming cash documents",
+      "visual_cues_ru": [
+        "Клиент передает несколько приходных кассовых документов с наличными, а кассир складывает и пересчитывает все деньги вместе вместо раздельного приема по каждому документу"
+      ],
+      "visual_cues_en": [
+        "Client submits multiple incoming cash documents with cash, and the cashier mixes and counts all the cash together instead of processing each document separately"
+      ],
+      "cv_objects": ["banknotes", "documents", "counting_machine"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 2, пункт 21",
+          "quote_ru": "В случае если клиент вносит наличные деньги в кассу банка по нескольким приходным кассовым документам, кассовый работник принимает наличные деньги по каждому приходному кассовому документу отдельно."
+        }
+      ],
+      "description_template_ru": "На видео зафиксировано, что при внесении клиентом наличных денег по нескольким приходным документам кассир принимает и пересчитывает наличность одновременно (смешивая суммы), а не раздельно по каждому документу. Это нарушает п. 21 Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231).",
+      "description_template_en": "The video shows the cashier combining and counting cash from multiple incoming cash documents simultaneously rather than processing each document separately. This violates Clause 21 of the Rules for Conducting Cash Operations (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    },
+    {
+      "code": "V05",
+      "category": "cash_acceptance",
+      "event_nature": "omission",
+      "type_ru": "Проведение кассовой операции без идентификации клиента по документу, удостоверяющему личность",
+      "type_en": "Conducting a cash transaction without verifying the client's identity document",
+      "visual_cues_ru": [
+        "Кассир принимает или выдает наличные деньги клиенту, не запросив и визуально не проверив документ, удостоверяющий личность (или цифровой документ)"
+      ],
+      "visual_cues_en": [
+        "Cashier accepts or disburses cash without requesting or inspecting the client's identity document (or digital ID)"
+      ],
+      "cv_objects": ["id_card", "passport", "banknotes", "person"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 1, пункт 7; Параграф 2, подпункт 1) пункта 19; Параграф 3, подпункт 1) пункта 31",
+          "quote_ru": "Кассовый работник банка осуществляет следующие действия: 1) проводит визуальную идентификацию клиента, вносящего наличные деньги, с документом, удостоверяющим его личность, либо данными, подтверждающими (идентифицирующими) личность клиента, полученными посредством сервиса цифровых документов."
+        },
+        {
+          "source_id": "NBRK_49",
+          "clause": "Глава 1, пункт 4; Глава 6, пункт 51",
+          "quote_ru": "По обменным операциям, проведенным через обменные пункты, фиксация данных клиента в журнале реестров осуществляется на основании данных документа, удостоверяющего личность клиента, либо данных сервиса цифровых документов."
+        }
+      ],
+      "description_template_ru": "На видео видно, что кассир осуществляет прием (или выдачу) наличных денег клиенту без проверки документа, удостоверяющего личность (либо цифрового документа), и без проведения визуальной идентификации клиента. Это нарушает требования п. 7 и пп. 1) п. 19 (при приеме) / пп. 1) п. 31 (при выдаче) Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231).",
+      "description_template_en": "The video shows the cashier accepting (or disbursing) cash without inspecting the client's identity document (or digital ID) and without performing visual identification of the client. This violates Clause 7 and Subclause 1) of Clause 19 / Subclause 1) of Clause 31 of the Rules for Conducting Cash Operations (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    },
+    {
+      "code": "V06",
+      "category": "cash_acceptance",
+      "event_nature": "omission",
+      "type_ru": "Прием наличных денег без полистного пересчета и проверки подлинности и платежности",
+      "type_en": "Accepting cash without sheet-by-sheet counting and authenticity/fitness verification",
+      "visual_cues_ru": [
+        "Кассир принимает от клиента банкноты или монеты и сразу убирает их в кассу/сейф без полистного пересчета (вручную или на счетной машинке) и/или без проверки подлинности на детекторе"
+      ],
+      "visual_cues_en": [
+        "Cashier takes banknotes or coins from the client and immediately places them into storage without sheet-by-sheet counting and/or without checking authenticity on a detector"
+      ],
+      "cv_objects": ["banknotes", "counting_machine", "uv_detector", "safe"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 1, пункт 9; Параграф 2, подпункт 2) пункта 19; Параграф 4, пункт 41; Параграф 5, пункты 57, 58",
+          "quote_ru": "Кассовый работник банка осуществляет следующие действия: 2) принимает банкноты с полистным пересчетом, монеты с пересчетом по кружкам с проверкой на подлинность и платежность наличных денег в соответствии с пунктами 57 и 58 Правил."
+        },
+        {
+          "source_id": "NBRK_49",
+          "clause": "Глава 2, подпункт 3) пункта 11",
+          "quote_ru": "Рабочее место кассира оборудуется техническими средствами для определения подлинности денежных знаков, обеспечивающими проверку банкноты в ультрафиолетовом свете и проверку банкноты на наличие магнитных меток."
+        }
+      ],
+      "description_template_ru": "На видео зафиксировано, что кассир принимает от клиента наличные деньги без полистного пересчета (пересчета монет по кружкам) и без проверки подлинности и платежности банкнот на специальном оборудовании (счетно-сортировальной машине / детекторе). Это является нарушением п. 9, пп. 2) п. 19 и п. 57 Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231).",
+      "description_template_en": "The video shows the cashier accepting cash from the client without performing a sheet-by-sheet count and without verifying banknote authenticity and fitness on specialized detection equipment. This violates Clause 9, Subclause 2) of Clause 19, and Clause 57 of the Rules for Conducting Cash Operations (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    },
+    {
+      "code": "V07",
+      "category": "cash_acceptance",
+      "event_nature": "commission",
+      "type_ru": "Прием или пересчет наличных денег в отсутствие клиента (вне зоны видимости клиента)",
+      "type_en": "Accepting or counting client cash in the absence of the client",
+      "visual_cues_ru": [
+        "Клиент отошел от кассового окна или кассир унес деньги клиента из зоны видимости, и пересчет денег проводится без присутствия клиента"
+      ],
+      "visual_cues_en": [
+        "Client has stepped away from the window or the cashier moved the cash out of sight, counting the client's cash without the client present"
+      ],
+      "cv_objects": ["person", "banknotes", "counting_machine"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 2, пункт 20 (абзац 1)",
+          "quote_ru": "Наличные деньги принимаются и пересчитываются кассовым работником в присутствии клиента."
+        }
+      ],
+      "description_template_ru": "На видео видно, что кассир производит прием и пересчет наличных денег клиента в его отсутствие (либо вне зоны видимости клиента). Это нарушает абзац первый п. 20 Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231), согласно которому наличные деньги принимаются и пересчитываются кассовым работником строго в присутствии клиента.",
+      "description_template_en": "The video shows the cashier accepting and counting the client's cash in the client's absence (or outside the client's field of view). This violates Clause 20 (paragraph 1) of the Rules for Conducting Cash Operations (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    },
+    {
+      "code": "V08",
+      "category": "cash_acceptance",
+      "event_nature": "omission",
+      "type_ru": "Неоформление кассового документа (отсутствие подписи, штампа или невыдача подтверждающего документа клиенту)",
+      "type_en": "Failure to sign/stamp cash documents or failure to issue a confirming document to the client",
+      "visual_cues_ru": [
+        "Кассир принял или выдал наличные деньги, но не подписал кассовый ордер, не поставил именной штамп и/или не передал клиенту подтверждающий документ (ордер, квитанцию, чек)"
+      ],
+      "visual_cues_en": [
+        "Cashier accepted or disbursed cash without signing/stamping the cash order and/or without handing a confirming receipt/voucher to the client"
+      ],
+      "cv_objects": ["document", "stamp", "pen", "transfer_tray"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 2, п. 17, пп. 3), 5), 6) п. 19; Параграф 3, п. 29, пп. 2), 5), 6) п. 31",
+          "quote_ru": "Кассовый работник банка: 5) подписывает все экземпляры приходного (расходного) кассового документа, проставляет штамп кассового работника банка на всех экземплярах кассового документа; 6) выдает клиенту документ, подтверждающий проведение кассовой операции."
+        },
+        {
+          "source_id": "NBRK_49",
+          "clause": "Глава 6, пункт 54",
+          "quote_ru": "Обменный пункт подтверждает проведение обменной операции выдачей контрольного чека."
+        }
+      ],
+      "description_template_ru": "На видео зафиксировано, что кассир завершил операцию с наличными деньгами без надлежащего оформления кассового документа (не проставил подпись и штамп кассового работника) и/или не выдал клиенту документ, подтверждающий проведение кассовой операции (ордер, квитанцию, чек). Это нарушает пп. 3), 5), 6) п. 19 (при приеме) / пп. 2), 5), 6) п. 31 (при выдаче) Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231).",
+      "description_template_en": "The video shows the cashier completing a cash transaction without properly executing the cash document (omitting signature and stamp) and/or failing to issue a confirming receipt/voucher to the client. This violates Subclauses 3), 5), and 6) of Clause 19 / Subclauses 2), 5), and 6) of Clause 31 of the Rules for Conducting Cash Operations (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    },
+    {
+      "code": "V09",
+      "category": "cash_disbursement",
+      "event_nature": "omission",
+      "type_ru": "Выдача наличных денег клиенту без пересчета в его присутствии",
+      "type_en": "Disbursing cash to a client without counting it in their presence",
+      "visual_cues_ru": [
+        "Кассир достает купюры (или банкноты из неполного/поврежденного корешка) и сразу передает их клиенту в лоток без полистного пересчета в присутствии клиента"
+      ],
+      "visual_cues_en": [
+        "Cashier takes loose banknotes (or notes from an opened/incomplete strap) and hands them directly to the client without counting them in the client's presence"
+      ],
+      "cv_objects": ["banknotes", "counting_machine", "transfer_tray", "person"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 3, подпункт 4) пункта 31 и пункт 32",
+          "quote_ru": "Кассовый работник банка: 4) пересчитывает подготовленные к выдаче наличные деньги в присутствии клиента, выдает клиенту наличные деньги. Банкноты из неполных, а также поврежденных корешков выдаются кассовым работником полистным пересчетом."
+        }
+      ],
+      "description_template_ru": "На видео видно, что кассир выдает клиенту наличные деньги (отдельные банкноты / банкноты из вскрытого корешка) без предварительного полистного пересчета в присутствии клиента. Это нарушает пп. 4) п. 31 и п. 32 Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231), обязывающих кассового работника пересчитывать подготовленные к выдаче наличные деньги в присутствии клиента.",
+      "description_template_en": "The video shows the cashier handing loose banknotes (or banknotes from an opened/incomplete strap) to the client without counting the prepared amount in the client's presence. This violates Subclause 4) of Clause 31 and Clause 32 of the Rules for Conducting Cash Operations (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    },
+    {
+      "code": "V10",
+      "category": "internal_cash_handling",
+      "event_nature": "commission",
+      "type_ru": "Пересчет, сортировка и упаковка наличных денег без присутствия контролирующего работника",
+      "type_en": "Counting, sorting, and packaging cash without a supervising employee present",
+      "visual_cues_ru": [
+        "Кассир в отсутствие клиента самостоятельно (в одиночку, без второго контролирующего работника) осуществляет пересчет, сортировку и упаковку наличных денег в корешки/пачки/мешки"
+      ],
+      "visual_cues_en": [
+        "Outside of client service, the cashier performs bulk cash counting, sorting, and packaging alone without a second supervising employee present"
+      ],
+      "cv_objects": ["person", "banknotes", "counting_machine", "cash_bundle"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 1, подпункт 2) пункта 2; Глава 2, Параграф 4, пункт 42",
+          "quote_ru": "Кассовые операции по пересчету, сортировке и упаковке наличных денег осуществляются кассовым работником в присутствии контролирующего работника, за исключением случаев совершения кассовых операций по приему и выдаче наличных денег клиенту."
+        }
+      ],
+      "description_template_ru": "На видео зафиксировано, что кассовый работник вне процесса обслуживания клиента самостоятельно (в одиночку) производит операции по пересчету, сортировке и упаковке наличных денег при отсутствии контролирующего работника. Это нарушает п. 42 Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231), согласно которому пересчет, сортировка и упаковка наличных денег осуществляются в присутствии контролирующего работника.",
+      "description_template_en": "The video shows the cashier performing internal cash counting, sorting, and packaging operations alone without the presence of a supervising bank employee. This violates Clause 42 of the Rules for Conducting Cash Operations (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    },
+    {
+      "code": "V11",
+      "category": "internal_cash_handling",
+      "event_nature": "omission",
+      "type_ru": "Передача наличных денег между работниками банка без оформления документа учета и подписи",
+      "type_en": "Transferring cash between bank employees without signing the cash transfer log/document",
+      "visual_cues_ru": [
+        "Один работник банка передает другому наличные деньги из рук в руки без записи и проставления подписей обоих работников в документе/журнале учета принятых и выданных наличных денег"
+      ],
+      "visual_cues_en": [
+        "One bank employee hands cash directly to another bank employee without recording and signing the transfer in the cash accounting log/document"
+      ],
+      "cv_objects": ["person", "cash_bundle", "banknotes", "journal_document", "pen"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 1, пункт 15; Параграф 2, пункт 23; Параграф 3, пункты 28, 37",
+          "quote_ru": "Передача наличных денег между кассовыми работниками банка отражается в документе учета принятых и выданных наличных денег и ценностей, который содержит: 1) дату передачи; 2) ФИО, должность и подпись кассового работника, передающего наличные деньги; 3) сумму наличных денег цифрами и прописью, количество, вид; 4) ФИО, должность и подпись кассового работника, получающего наличные деньги."
+        }
+      ],
+      "description_template_ru": "На видео видно, что передача наличных денег между работниками банка осуществляется неформально (из рук в руки) без заполнения и подписания обеими сторонами документа учета принятых и выданных наличных денег и ценностей. Это нарушает п. 15 и п. 23 Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231).",
+      "description_template_en": "The video shows cash being transferred directly from hand to hand between bank employees without recording the operation and obtaining signatures from both employees in the cash accounting document. This violates Clauses 15 and 23 of the Rules for Conducting Cash Operations (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    },
+    {
+      "code": "V12",
+      "category": "internal_cash_handling",
+      "event_nature": "commission",
+      "type_ru": "Нарушение требований к сортировке, обандероливанию и упаковке наличных денег",
+      "type_en": "Improper sorting, strapping, or packaging of banknotes and coins",
+      "visual_cues_ru": [
+        "Корешки банкнот не обандероливаются (перетягиваются резинкой) или на бандеролях/накладках не проставляются штамп и подпись кассира",
+        "Пачки банкнот не снабжаются накладками, не обвязываются шпагатом с пломбой и не завариваются в вакуумный пакет",
+        "Ветхие банкноты упаковываются вместе с годными"
+      ],
+      "visual_cues_en": [
+        "Banknote straps are not properly banded (e.g., held with rubber bands) or lack cashier stamps and signatures",
+        "Banknote bundles lack top/bottom covers, twine with lead seal, or vacuum-sealed plastic packaging",
+        "Unfit/worn banknotes are mixed and packaged together with fit banknotes"
+      ],
+      "cv_objects": ["cash_bundle", "strap", "stamp", "pen", "vacuum_sealer"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 4, пункты 45, 46, 47, 48, 51, 52",
+          "quote_ru": "Каждые сто листов банкнот одного номинала укладываются лицевой стороной вверх в одну сторону, формируются в корешки и обандероливаются... На бандероли указываются номинал, сумма, дата формирования, штамп или иной код, а также подпись кассового работника... Каждые десять корешков упаковываются в пачку по одной тысяче листов, которые снабжаются верхней и нижней накладками... пломбируются пломбиратором либо завариваются на вакуумном упаковщике."
+        }
+      ],
+      "description_template_ru": "На видео зафиксировано нарушение установленного порядка формирования и упаковки наличных денег (отсутствие надлежащего обандероливания корешков, оформления накладок со штампом и подписью кассира, пломбирования или вакуумной запайки пачки / смешивание годных и ветхих банкнот). Это нарушает пп. 45–48 Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231).",
+      "description_template_en": "The video shows a violation of mandatory cash sorting and packaging procedures (improper strapping, missing stamps/signatures on straps or bundle covers, failure to seal or vacuum-pack bundles, or mixing fit and unfit banknotes). This violates Clauses 45–48 of the Rules for Conducting Cash Operations (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    },
+    {
+      "code": "V13",
+      "category": "inkassatsiya",
+      "event_nature": "omission",
+      "type_ru": "Нарушение процедуры приема или сдачи инкассаторской сумки (отсутствие проверки пломбы, целостности сумки и документов)",
+      "type_en": "Accepting or handing over a CIT bag without checking bag integrity, seal, and accompanying documents",
+      "visual_cues_ru": [
+        "Кассир принимает от инкассатора (или сдает инкассатору) сумку/мешок с наличностью без осмотра целостности сумки, без проверки пломбы (сверки с образцом пломбы) и без сверки/подписания препроводительных документов и явочной карточки"
+      ],
+      "visual_cues_en": [
+        "Cashier accepts from (or hands over to) a CIT officer a collection bag without inspecting bag integrity, checking the seal against the sample card, and verifying/signing the accompanying documents and attendance card"
+      ],
+      "cv_objects": ["cit_bag", "lead_seal", "document", "cit_officer", "cashier"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 2, пункт 24; Параграф 3, пункты 38, 39; Глава 3, Параграф 2, пункты 106, 107, 108",
+          "quote_ru": "Кассовые операции по приему наличных денег клиента от подразделения инкассации банка или инкассаторской организации осуществляется кассовым работником банка на основании препроводительного документа... Кассовый работник: 1) проверяет указание на препроводительном документе необходимых сведений; 2) осуществляет регистрацию суммы принимаемых наличных денег; 3) проверяет целостность сумки; 4) проверяет правильность пломбирования сумки."
+        }
+      ],
+      "description_template_ru": "На видео видно, что при приеме (передаче) инкассаторской сумки кассовый работник (либо инкассатор) не проверяет целостность сумки, правильность пломбирования (тождественность пломбы образцу) и не сверяет/не оформляет препроводительные документы (явочную карточку, накладную). Это нарушает п. 24, пп. 38–39 и п. 107 Правил осуществления кассовых операций и операций по инкассации (Постановление Правления НБРК от 29.11.2019 № 231).",
+      "description_template_en": "The video shows the cashier (or CIT collector) accepting/handing over a cash-in-transit bag without inspecting the physical integrity of the bag, verifying the seal against the certified sample, and checking/signing the accompanying transport documents. This violates Clauses 24, 38–39, and 107 of the Rules for Conducting Cash Operations and Inkassatsiya (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    },
+    {
+      "code": "V14",
+      "category": "inkassatsiya",
+      "event_nature": "omission",
+      "type_ru": "Нарушение порядка действий при обнаружении повреждения инкассаторской сумки или пломбы",
+      "type_en": "Failure to open and count a damaged/unsealed CIT bag in the presence of the CIT officer",
+      "visual_cues_ru": [
+        "Инкассаторская сумка имеет видимые повреждения, открыта или без пломбы, но кассир принимает ее без немедленного вскрытия и полистного пересчета ценностей в присутствии инкассатора (либо вскрывает сумку после ухода инкассатора)"
+      ],
+      "visual_cues_en": [
+        "CIT bag is visibly damaged, open, or unsealed, yet the cashier accepts it without immediately opening and counting the cash in the presence of the CIT officer (or opens it after the CIT officer leaves)"
+      ],
+      "cv_objects": ["cit_bag", "banknotes", "cit_officer", "cashier"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 2, пункт 25; Глава 3, Параграф 3, пункт 112",
+          "quote_ru": "В случае обнаружения нарушения целостности сумки кассовый работник в присутствии работника подразделения инкассации банка или инкассаторской организации вскрывает и пересчитывает находящиеся в них наличные деньги и ценности. При обнаружении недостачи или излишка составляется акт о результатах пересчета."
+        }
+      ],
+      "description_template_ru": "На видео зафиксирована передача инкассаторской сумки с нарушенной целостностью (открытой / без пломбы), при этом кассир не производит обязательного вскрытия и полистного пересчета ценностей в присутствии работника инкассации и не составляет акт о результатах пересчета. Это нарушает п. 25 Правил осуществления кассовых операций и операций по инкассации (Постановление Правления НБРК от 29.11.2019 № 231).",
+      "description_template_en": "The video shows a CIT bag with compromised integrity (open or unsealed) being accepted without immediately opening and counting the cash and valuables in the presence of the CIT officer and drawing up a recount act. This violates Clause 25 of the Rules for Conducting Cash Operations and Inkassatsiya (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    },
+    {
+      "code": "V15",
+      "category": "inkassatsiya",
+      "event_nature": "commission",
+      "type_ru": "Нарушение требований к экипировке инкассаторов или транспортировке наличных денег без спецсумки",
+      "type_en": "CIT officer lacking protective gear/body armor or carrying cash outside a sealed CIT bag",
+      "visual_cues_ru": [
+        "Работник инкассации выполняет сбор/доставку наличных денег без бронежилета (средств индивидуальной защиты) и/или переносит пачки денег открыто в руках / в обычном пакете вместо опломбированной инкассаторской сумки (спецконтейнера)"
+      ],
+      "visual_cues_en": [
+        "CIT officer performs collection/delivery without a bulletproof vest (personal protective equipment) and/or carries loose cash bundles in hand or an ordinary bag instead of a sealed CIT bag/container"
+      ],
+      "cv_objects": ["cit_officer", "vest", "cit_bag", "cash_bundle"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 3, Параграф 1, пункты 93, 103, 105; Параграф 2-1, подпункт 1) пункта 109-6",
+          "quote_ru": "Бригада работников подразделения инкассации банка, инкассаторской организации обеспечивается экипировкой, индивидуальными средствами защиты, в том числе бронежилетами, касками (шлемами), а также служебным оружием. Банкноты, монеты и ценности, подлежащие инкассации, упаковываются в сумки с составлением препроводительного документа."
+        },
+        {
+          "source_id": "NBRK_159",
+          "clause": "Глава 2, пункт 8",
+          "quote_ru": "Выезд работника службы инкассации по маршруту и графику инкассации банкнот, монет и ценностей не осуществляется при отсутствии экипировки, средств индивидуальной защиты, в том числе бронежилетов, касок (шлемов), а также служебного оружия."
+        }
+      ],
+      "description_template_ru": "На видео видно, что работник инкассации осуществляет операции по инкассации наличных денег без обязательных средств индивидуальной защиты (бронежилета) и/или без упаковки наличных денег в специальную опломбированную инкассаторскую сумку (спецконтейнер). Это нарушает пп. 93, 103, 105 и пп. 1) п. 109-6 Правил осуществления кассовых операций и операций по инкассации (Постановление Правления НБРК от 29.11.2019 № 231).",
+      "description_template_en": "The video shows the cash-in-transit (CIT) officer performing collection operations without mandatory personal protective equipment (bulletproof vest) and/or carrying cash outside of a sealed specialized collection bag/container. This violates Clauses 93, 103, 105, and Subclause 1) of Clause 109-6 of the Rules for Conducting Cash Operations and Inkassatsiya (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    },
+    {
+      "code": "V16",
+      "category": "security_and_premises",
+      "event_nature": "commission",
+      "type_ru": "Присутствие посторонних лиц в помещении кассы",
+      "type_en": "Unauthorized person present inside the cash booth",
+      "visual_cues_ru": [
+        "Внутрь помещения кассы (за перегородку, в рабочую зону кассира) заходит клиент или иное постороннее лицо, не являющееся уполномоченным кассовым или контролирующим работником"
+      ],
+      "visual_cues_en": [
+        "A client or other unauthorized third party enters the enclosed cash booth (behind the partition, into the cashier's working area)"
+      ],
+      "cv_objects": ["person", "door", "cash_booth_interior"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_49",
+          "clause": "Глава 5, пункт 41",
+          "quote_ru": "В помещениях операционных касс обменных пунктов не допускается присутствие посторонних лиц."
+        },
+        {
+          "source_id": "NBRK_14",
+          "clause": "Глава 3, пункт 8 и подпункт 1) пункта 16",
+          "quote_ru": "Кассовый узел подлежит изолированию от других производственных, подсобных, подвальных и служебных помещений одним закрывающимся служебным входом. Каждая касса имеет отдельный вход с закрывающейся на замок дверью."
+        },
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 1, пункт 14; Параграф 8, пункт 75",
+          "quote_ru": "Банк обеспечивает осуществление кассовых операций кассовыми работниками в соответствии с их должностными обязанностями, исключающее совершение хищения наличных денег и ценностей и других противоправных действий."
+        }
+      ],
+      "description_template_ru": "На видео зафиксирован вход и нахождение постороннего лица (клиента / неуполномоченного лица) внутри изолированного помещения кассы (рабочей зоны кассира). Это нарушает п. 41 Правил осуществления обменных операций (Постановление Правления НБРК от 04.04.2019 № 49), п. 8 и пп. 1) п. 16 Правил организации охраны и устройства помещений банков (Постановление Правления НБРК от 24.02.2020 № 14), а также п. 14 Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231).",
+      "description_template_en": "The video shows an unauthorized person (client or third party) entering and remaining inside the isolated cash booth (cashier's working area). This violates Clause 41 of NBRK Resolution No. 49 (04.04.2019), Clause 8 and Subclause 1) of Clause 16 of NBRK Resolution No. 14 (24.02.2020), and Clause 14 of NBRK Resolution No. 231 (29.11.2019)."
+    },
+    {
+      "code": "V17",
+      "category": "security_and_premises",
+      "event_nature": "commission",
+      "type_ru": "Открытая (незапертая) входная дверь в помещение кассы во время работы с наличными деньгами",
+      "type_en": "Cash booth entrance door left open (unlocked) during cash operations",
+      "visual_cues_ru": [
+        "Дверь в помещение кассы оставлена открытой (не заперта на замок) во время проведения кассовых операций, пересчета денег или обслуживания клиента"
+      ],
+      "visual_cues_en": [
+        "The entrance door to the cash booth is left open (unlocked) while cash operations, counting, or client service are taking place"
+      ],
+      "cv_objects": ["door", "cashier", "banknotes"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_14",
+          "clause": "Глава 3, пункт 8 и подпункты 1), 2) пункта 16",
+          "quote_ru": "Кассовый узел подлежит изолированию от других помещений одним закрывающимся служебным входом. Устройство помещения кассы: 1) каждая касса имеет отдельный вход с закрывающейся на замок дверью; 2) стены, потолок и пол кассы оборудуются защитными средствами, обеспечивающими безопасность кассового работника."
+        },
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 1, подпункт 7) пункта 3 и пункт 5",
+          "quote_ru": "Хранение наличных денег – принятие банком мер для обеспечения сохранности наличных денег. Банк для осуществления кассовых операций оборудует кассовый узел в соответствии с Правилами организации охраны и устройства помещений."
+        }
+      ],
+      "description_template_ru": "На видео видно, что дверь в помещение кассы оставлена открытой (не закрыта на замок) во время проведения кассовых операций с наличными деньгами. Это нарушает требования к изолированности и безопасности кассы, установленные п. 8 и пп. 1), 2) п. 16 Правил организации охраны и устройства помещений банков (Постановление Правления НБРК от 24.02.2020 № 14) и п. 5 Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231).",
+      "description_template_en": "The video shows that the entrance door to the cash booth is left open (unlocked) while cash operations are being conducted. This violates the cash booth isolation and security requirements established by Clause 8 and Subclauses 1)–2) of Clause 16 of NBRK Resolution No. 14 (24.02.2020) and Clause 5 of NBRK Resolution No. 231 (29.11.2019)."
+    },
+    {
+      "code": "V18",
+      "category": "security_and_premises",
+      "event_nature": "commission",
+      "type_ru": "Передача наличных денег в обход специального транспортирующего устройства либо противоправные действия с наличностью (хищение)",
+      "type_en": "Passing cash bypassing the transfer tray, obstructing CCTV, or misappropriating cash",
+      "visual_cues_ru": [
+        "Кассир передает или принимает наличные деньги от клиента в обход передаточного лотка/бункера (например, через открытую дверь кассы)",
+        "Кассир скрытно прячет купюры в карман одежды, в личные вещи, под стол или в мусорную корзину (признаки хищения)",
+        "Кассир перекрывает обзор камеры видеонаблюдения"
+      ],
+      "visual_cues_en": [
+        "Cashier passes or receives cash from a client bypassing the secure transfer tray/bunker (e.g., through the open booth door)",
+        "Cashier secretly pockets banknotes into clothing, personal items, under the desk, or into a trash bin (signs of theft)",
+        "Cashier intentionally obstructs the CCTV camera's line of sight"
+      ],
+      "cv_objects": ["banknotes", "transfer_tray", "door", "person", "pocket"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_14",
+          "clause": "Глава 3, подпункты 3), 4), 6) пункта 16",
+          "quote_ru": "3) передняя часть кассы имеет оконный проем, оборудованный защитными средствами, обеспечивающими безопасность кассового работника и исключающие возможность хищения наличных денег и ценностей; 4) передняя часть кассы оборудуется специальными транспортирующими устройствами для передачи наличных денег и ценностей... 6) касса оборудуется видеокамерами системы видеонаблюдения."
+        },
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 1, пункты 12, 14, 16, 20",
+          "quote_ru": "Банк обеспечивает осуществление кассовых операций кассовыми работниками в соответствии с их должностными обязанностями, исключающее совершение хищения наличных денег и ценностей и других противоправных действий."
+        },
+        {
+          "source_id": "NBRK_49",
+          "clause": "Глава 2, подпункт 2) пункта 11",
+          "quote_ru": "В зоне видимости видеонаблюдения находятся рабочая зона кассира и клиент, а соответствующие устройства устанавливаются в местах, обеспечивающих отсутствие помех для видеонаблюдения."
+        }
+      ],
+      "description_template_ru": "На видео зафиксированы действия кассира по передаче наличных денег в обход специального транспортирующего устройства (передаточного лотка/бункера) либо сокрытию банкнот в личной одежде / вне зоны хранения, что создает прямую угрозу хищения наличных денег. Это нарушает пп. 3), 4), 6) п. 16 Правил организации охраны и устройства помещений банков (Постановление Правления НБРК от 24.02.2020 № 14) и пп. 12, 14, 20 Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231).",
+      "description_template_en": "The video shows the cashier transferring cash bypassing the dedicated secure transfer tray/bunker (or concealing banknotes in personal clothing/items, or obstructing the surveillance camera), creating a direct risk of cash theft. This violates Subclauses 3), 4), and 6) of Clause 16 of NBRK Resolution No. 14 (24.02.2020) and Clauses 12, 14, and 20 of NBRK Resolution No. 231 (29.11.2019)."
+    },
+    {
+      "code": "V19",
+      "category": "counterfeit_and_doubtful_cash",
+      "event_nature": "commission",
+      "type_ru": "Нарушение порядка работы с сомнительными или имеющими признаки подделки банкнотами (возврат клиенту без составления акта)",
+      "type_en": "Improper handling of doubtful or suspected counterfeit banknotes (returning to client without drawing up an act)",
+      "visual_cues_ru": [
+        "После обнаружения на детекторе сомнительной, окрашенной спецкраской или имеющей признаки подделки банкноты кассир возвращает ее клиенту вместо составления акта и изъятия"
+      ],
+      "visual_cues_en": [
+        "After detecting a doubtful, dye-stained, or suspected counterfeit banknote on the detector, the cashier returns it to the client instead of retaining it and drawing up an official act"
+      ],
+      "cv_objects": ["banknotes", "uv_detector", "document", "transfer_tray"],
+      "legal_references": [
+        {
+          "source_id": "NBRK_231",
+          "clause": "Глава 2, Параграф 5, пункты 59, 60, 61",
+          "quote_ru": "59. При обнаружении сомнительных банкнот и монет кассовый работник в присутствии клиента и заведующего кассой составляет акт о приеме на экспертизу сомнительных банкнот и монет в двух экземплярах... 61. Банкноты и монеты, имеющие признаки подделки, клиенту не возвращаются, сумма принятых банкнот и монет на банковский счет клиента не зачисляется."
+        }
+      ],
+      "description_template_ru": "На видео видно, что после выявления на детекторе сомнительной или имеющей признаки подделки банкноты кассир возвращает ее клиенту (либо принимает без вызова заведующего кассой и составления акта приема на экспертизу). Это нарушает пп. 59–61 Правил осуществления кассовых операций (Постановление Правления НБРК от 29.11.2019 № 231), согласно которым такие банкноты клиенту не возвращаются и подлежат актированию/изъятию.",
+      "description_template_en": "The video shows that after detecting a doubtful or suspected counterfeit banknote on the verification device, the cashier returns the banknote to the client instead of retaining it and drawing up an official examination act in the presence of the head cashier. This violates Clauses 59–61 of the Rules for Conducting Cash Operations (NBRK Board Resolution No. 231 dated 29.11.2019)."
+    }
+  ]
+}

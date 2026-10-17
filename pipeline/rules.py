@@ -98,7 +98,9 @@ def plan(events: list[Event], duration: float) -> list[Check]:
 @dataclass
 class Violation:
     type_id: str
-    title: str
+    code: str
+    title: str  # catalog type_ru (API "type")
+    subtype: str
     timecode_sec: float
     observed: str
     reason: str
@@ -164,7 +166,7 @@ def decide(checks: list[Check], periodic_min_consecutive: int = 2) -> list[Viola
 
 
 def _mk(c: Check, rule: dict, tc: float, ev_times: list[float], conf: float, source: str) -> Violation:
-    return Violation(c.rule, rule["title"], tc, rule.get("observed", "").replace("{t}", f"{tc:.1f}"),
+    return Violation(c.rule, rule.get("code", ""), rule["type"], rule.get("subtype", ""), tc, rule.get("observed", "").replace("{t}", f"{tc:.1f}"),
                      rule.get("reason", ""), rule.get("legal", ""), [max(0.0, t) for t in ev_times], round(conf, 2), source)
 
 

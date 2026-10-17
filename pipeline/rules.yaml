@@ -1,117 +1,175 @@
-# One entry per violation type. The rule engine (rules.py) evaluates `trigger` events from the timeline,
-# runs the listed VLM `checks` on frames at the given offsets (seconds relative to the trigger), and
-# fires when at least `min_yes` of the frames answer "yes" (2-of-3 voting = two-signal confirmation).
-# timecode = trigger time + timecode_offset. Descriptions are Russian templates; {t} = timecode.
+# One entry per detectable rule. `code` = violation code from the team catalog
+# (legal/violations_catalog.source.json); `type` = catalog type_ru, which is what the API returns as
+# "type" (several rules may share a code); `subtype` = the specific situation, used in the description.
+# The engine (rules.py) evaluates `trigger` events, runs VLM `checks` on frames at `offsets` seconds after
+# the trigger and fires when >= min_yes frames answer "yes" (2-of-3 voting = two-signal confirmation).
+# timecode = trigger time + timecode_offset. `legal` = key in legal/norms.yaml.
 
 types:
-  key_left_in_safe:
-    title: Ключ оставлен в замке сейфа
-    trigger: cashier_left
-    checks: [{q: key_in_safe, offsets: [2.5, 3.5, 4.5], min_yes: 2}]
+  # ---------------------------------------------------------------- V01
+  personal_items_on_desk:
+    code: V01
+    type: Наличие личных вещей или использование мобильного телефона в кассе
+    subtype: Личные вещи на рабочем столе кассира
+    trigger: periodic
+    checks: [{q: personal_items, offsets: [0.0], min_yes: 1}]
     timecode_offset: 0
-    observed: "На {t} с кассир покидает рабочее место; в замке дверцы сейфа виден оставленный ключ."
-    reason: "Оставление ключа в сейфе без присмотра создаёт условия для хищения ценностей."
-    legal: safekeeping_general
-    untested_note: Ключ в замке занимает ~3 пикселя на исходном разрешении; проверка опирается на VLM и может давать пропуски.
-  safe_left_open:
-    title: Сейф оставлен открытым
-    trigger: [cashier_left, periodic]
-    checks: [{q: safe_open, offsets: [2.5, 3.5, 4.5], min_yes: 2}]
+    observed: "На {t} с на рабочем столе кассира находятся личные вещи (сумка, одежда, еда или напитки)."
+    reason: "Личные вещи работников банка должны храниться вне кассового узла."
+    legal: V01
+  # ---------------------------------------------------------------- V02
+  cashier_left_during_service:
+    code: V02
+    type: Оставление рабочего места кассиром во время обслуживания клиента
+    subtype: Кассир покинул рабочее место при клиенте
+    trigger: periodic
+    checks: [{q: cashier_absent_with_visitor, offsets: [0.0], min_yes: 1}]
     timecode_offset: 0
-    observed: "На {t} с дверца сейфа открыта, при этом кассир находится не у сейфа."
-    reason: "Открытый сейф без непосредственного контроля кассира создаёт условия для хищения ценностей."
-    legal: safekeeping_general
+    observed: "На {t} с посетитель находится у стола кассира, а кассир отсутствует на рабочем месте."
+    reason: "Кассовому работнику не допускается покидать рабочее место до окончания обслуживания клиента."
+    legal: V02
+    untested: true   # no example in the training data
+  # ---------------------------------------------------------------- V03 (storage of cash / safe / keys)
   money_left_unattended:
-    title: Деньги оставлены на столе без присмотра
+    code: V03
+    type: Нарушение порядка хранения наличных денег на рабочем месте кассира (неубранная наличность / открытый сейф)
+    subtype: Деньги оставлены на столе при уходе кассира
     trigger: cashier_left
     checks: [{q: money_on_desk, offsets: [2.5, 3.5, 4.5], min_yes: 2}]
     timecode_offset: 0
     observed: "На {t} с кассир покидает рабочее место; на столе остаются наличные деньги."
-    reason: "Наличные деньги оставлены без присмотра ответственного лица."
-    legal: safekeeping_general
-  bag_left_on_desk:
-    title: Инкассаторская сумка оставлена на столе
-    trigger: cashier_left
-    checks: [{q: bag_on_desk, offsets: [2.5, 3.5, 4.5], min_yes: 2}]
-    timecode_offset: 0
-    observed: "На {t} с кассир покидает рабочее место; на столе остаётся инкассаторская сумка (мешок)."
-    reason: "Сумка для инкассации оставлена без присмотра."
-    legal: cit_bag
-  laptop_unlocked_unattended:
-    title: Компьютер не заблокирован при уходе кассира
-    trigger: cashier_left
-    checks: [{q: laptop_on, offsets: [2.5, 3.5, 4.5], min_yes: 2}]
-    timecode_offset: 0
-    observed: "На {t} с кассир покидает рабочее место; на экране ноутбука открыто рабочее приложение (экран не заблокирован)."
-    reason: "Незаблокированное рабочее место позволяет постороннему доступ к банковским системам."
-    legal: safekeeping_general
-  left_without_safe_key:
-    title: Кассир ушёл, не забрав ключ от сейфа (не тестировано)
-    trigger: cashier_left
-    checks: []   # covered by key_in_safe; kept as a separate type for keys left elsewhere (not in training data)
-    enabled: false
-    legal: safekeeping_general
+    reason: "Ранее принятые наличные деньги должны храниться в устройствах, закрывающихся на ключ, а не на столе."
+    legal: V03
   prev_client_money_on_desk:
-    title: Деньги предыдущего клиента на столе при подходе следующего
+    code: V03
+    type: Нарушение порядка хранения наличных денег на рабочем месте кассира (неубранная наличность / открытый сейф)
+    subtype: Деньги предыдущей операции на столе при подходе следующего клиента
     trigger: visitor_arrived_after_visitor
     checks: [{q: money_on_desk, offsets: [0.0, 1.0, 2.0], min_yes: 2}]
     timecode_offset: 0
     observed: "На {t} с к столу подходит следующий посетитель, при этом на столе лежат наличные деньги от предыдущей операции."
-    reason: "Наличные деньги предыдущего клиента не убраны до начала обслуживания следующего."
-    legal: safekeeping_general
-  second_client_during_service:
-    title: Второй посетитель во время обслуживания клиента
-    trigger: second_visitor
-    checks: []   # detector-only, confirmed by sustained occupancy
+    reason: "На рабочем месте должны находиться только деньги текущего клиента; ранее принятые — в хранилище под ключ."
+    legal: V03
+  safe_left_open:
+    code: V03
+    type: Нарушение порядка хранения наличных денег на рабочем месте кассира (неубранная наличность / открытый сейф)
+    subtype: Сейф оставлен открытым
+    trigger: [cashier_left, periodic]
+    checks: [{q: safe_open, offsets: [2.5, 3.5, 4.5], min_yes: 2}]
     timecode_offset: 0
-    observed: "На {t} с в кассовое помещение входит второй посетитель, пока обслуживается первый клиент."
-    reason: "Одновременное присутствие посторонних лиц при совершении кассовой операции нарушает режим кассового помещения."
-    legal: cash_room_access
-  client_admitted_workplace_not_ready:
-    title: Клиент допущен до готовности рабочего места
-    trigger: visitor_arrived
-    checks: [{q: cashier_ready, offsets: [0.0, 1.0, 2.0], min_yes: 2}]
+    observed: "На {t} с дверца сейфа открыта, при этом кассир находится не у сейфа."
+    reason: "Устройство для хранения наличных денег должно быть закрыто на ключ."
+    legal: V03
+  key_left_in_safe:
+    code: V03
+    type: Нарушение порядка хранения наличных денег на рабочем месте кассира (неубранная наличность / открытый сейф)
+    subtype: Ключ оставлен в замке сейфа
+    trigger: cashier_left
+    checks: [{q: key_in_safe, offsets: [2.5, 3.5, 4.5], min_yes: 2}]
     timecode_offset: 0
-    observed: "На {t} с в помещение входит клиент, когда кассир ещё не готов к обслуживанию (стоит/настраивает оборудование)."
-    reason: "Обслуживание клиента начато до подготовки рабочего места кассира."
-    legal: cash_room_access
-  door_left_open:
-    title: Дверь кассового помещения оставлена открытой
-    trigger: cashier_entered
-    checks: [{q: door_open, offsets: [2.0, 3.0, 4.0], min_yes: 2}]
-    timecode_offset: 1.0
-    observed: "На {t} с кассир входит в помещение; дверь кассового помещения остаётся открытой."
-    reason: "Кассовое помещение должно быть изолировано дверью, закрывающейся на замок."
-    legal: cash_room_door
+    observed: "На {t} с кассир покидает рабочее место; в замке дверцы сейфа виден оставленный ключ."
+    reason: "Ключи от устройств хранения наличных денег должны храниться так, чтобы исключить их несанкционированное использование."
+    legal: V03_keys
+    note: VLM cannot see the 3-px key; a lock-patch classifier replaces the VLM answer (Phase 3/4).
+  left_without_safe_key:
+    code: V03
+    type: Нарушение порядка хранения наличных денег на рабочем месте кассира (неубранная наличность / открытый сейф)
+    subtype: Кассир ушёл, не забрав ключ от сейфа
+    trigger: cashier_left
+    checks: []
+    enabled: false   # seed #9, no training example; visually the same as key_left_in_safe
+    legal: V03_keys
+  bag_left_on_desk:
+    code: V03
+    type: Нарушение порядка хранения наличных денег на рабочем месте кассира (неубранная наличность / открытый сейф)
+    subtype: Инкассаторская сумка оставлена на столе
+    trigger: cashier_left
+    checks: [{q: bag_on_desk, offsets: [2.5, 3.5, 4.5], min_yes: 2}]
+    timecode_offset: 0
+    observed: "На {t} с кассир покидает рабочее место; на столе остаётся инкассаторская сумка (мешок)."
+    reason: "Ценности не убраны в хранилище и оставлены без присмотра."
+    legal: V03_bag
+  unsecured_valuables_generic:
+    code: V03
+    type: Нарушение порядка хранения наличных денег на рабочем месте кассира (неубранная наличность / открытый сейф)
+    subtype: Ценности оставлены без присмотра (общая проверка)
+    trigger: cashier_left
+    checks: [{q: open_check}]
+    timecode_offset: 0
+    observed: "На {t} с кассир покидает рабочее место; без присмотра остаются: {items}."
+    reason: "Наличные деньги и ценности должны храниться в устройствах, закрывающихся на ключ."
+    legal: V03
+  # ---------------------------------------------------------------- V05
   client_no_id:
-    title: Приём наличных без предъявления документа клиентом
+    code: V05
+    type: Проведение кассовой операции без идентификации клиента по документу, удостоверяющему личность
+    subtype: Клиент передал деньги без предъявления документа
     trigger: visitor_episode
     checks: [{q: handover_first_item, expect: banknotes}]
     timecode_offset: 0
     observed: "На {t} с клиент передаёт кассиру наличные деньги; документ, удостоверяющий личность, перед этим не предъявлялся."
     reason: "При приёме наличных кассир обязан провести визуальную идентификацию клиента по документу, удостоверяющему личность."
-    legal: client_id
+    legal: V05
+  # ---------------------------------------------------------------- V06
+  unchecked_rejected_banknotes:
+    code: V06
+    type: Прием наличных денег без полистного пересчета и проверки подлинности и платежности
+    subtype: Отбракованные машиной банкноты не проверены вручную
+    trigger: visitor_episode
+    checks: []
+    enabled: false   # X-1/X-44 hypothesis, unconfirmed by the team; manual-check question 0.67 in Phase 2
+    legal: V06
+  # ---------------------------------------------------------------- V13
   collector_no_id:
-    title: Инкассаторская сумка принята без предъявления документов инкассатором
+    code: V13
+    type: Нарушение процедуры приема или сдачи инкассаторской сумки (отсутствие проверки пломбы, целостности сумки и документов)
+    subtype: Сумка принята от инкассатора без предъявления документов
     trigger: visitor_episode
     checks: [{q: handover_first_item, expect: bag}]
     timecode_offset: 0
-    observed: "На {t} с посетитель передаёт кассиру инкассаторскую сумку; документы (удостоверение/доверенность) перед этим не предъявлялись."
-    reason: "Приём ценностей от инкассатора без проверки его документов."
-    legal: collector_docs
-  personal_items_on_desk:
-    title: Личные вещи на рабочем месте кассира
-    trigger: periodic
-    checks: [{q: personal_items, offsets: [0.0, 1.0, 2.0], min_yes: 2}]
+    observed: "На {t} с посетитель передаёт кассиру инкассаторскую сумку; сопроводительные документы перед этим не предъявлялись и не проверялись."
+    reason: "Приём наличных от инкассации производится на основании препроводительного документа с проверкой сумки и пломбы."
+    legal: V13
+  # ---------------------------------------------------------------- V16
+  second_client_during_service:
+    code: V16
+    type: Присутствие посторонних лиц в помещении кассы
+    subtype: Второй посетитель во время обслуживания клиента
+    trigger: second_visitor
+    checks: []   # occupancy >= 3 from the VLM presence count, sustained
     timecode_offset: 0
-    observed: "На {t} с на рабочем столе кассира находятся личные вещи (сумка/одежда/еда/напитки)."
-    reason: "Личные вещи работников хранятся вне кассового узла."
-    legal: personal_items
-  unsecured_valuables_generic:
-    title: Ценности/рабочее место оставлены без присмотра (общая проверка)
+    observed: "На {t} с в кассовое помещение входит второй посетитель, пока обслуживается первый клиент."
+    reason: "Кассовое помещение должно быть изолировано; присутствие посторонних при операции не допускается."
+    legal: V16
+  # ---------------------------------------------------------------- V17
+  door_left_open:
+    code: V17
+    type: Открытая (незапертая) входная дверь в помещение кассы во время работы с наличными деньгами
+    subtype: Дверь оставлена открытой после входа
+    trigger: cashier_entered
+    checks: [{q: door_open, offsets: [2.0, 3.0, 4.0], min_yes: 2}]
+    timecode_offset: 1.0
+    observed: "На {t} с кассир входит в помещение; дверь кассового помещения остаётся открытой."
+    reason: "Кассовое помещение должно быть изолировано дверью, закрывающейся на замок."
+    legal: V17
+  # ---------------------------------------------------------------- not in the team catalog
+  laptop_unlocked_unattended:
+    code: X01
+    type: Рабочий компьютер кассира не заблокирован при уходе
+    subtype: Экран ноутбука не заблокирован
     trigger: cashier_left
-    checks: [{q: open_check}]
+    checks: [{q: laptop_on, offsets: [2.5, 3.5, 4.5], min_yes: 2}]
     timecode_offset: 0
-    observed: "На {t} с кассир покидает рабочее место; без присмотра остаются: {items}."
-    reason: "Ценности и рабочее место кассира оставлены без контроля."
-    legal: safekeeping_general
+    observed: "На {t} с кассир покидает рабочее место; на экране ноутбука открыто рабочее приложение (экран не заблокирован)."
+    reason: "Незаблокированное рабочее место позволяет посторонним получить доступ к банковским системам."
+    legal: X01
+  client_admitted_workplace_not_ready:
+    code: X02
+    type: Обслуживание клиента до готовности рабочего места кассира
+    subtype: Клиент вошёл, когда кассир не был готов
+    trigger: visitor_arrived
+    checks: [{q: cashier_ready, offsets: [0.0, 1.0, 2.0], min_yes: 2}]
+    timecode_offset: 0
+    observed: "На {t} с в помещение входит клиент, когда кассир ещё не готов к обслуживанию (стоит или настраивает оборудование)."
+    reason: "Обслуживание клиента начато до подготовки рабочего места кассира."
+    legal: X02

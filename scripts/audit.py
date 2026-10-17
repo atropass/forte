@@ -11,6 +11,7 @@ import unicodedata
 from pathlib import Path
 
 import openpyxl
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 VIDEO_DIR = ROOT / "open" / "videos"
@@ -63,6 +64,12 @@ TYPE_BY_VIDEO = {
 }
 
 
+RULE_CODES = {k: v.get("code", "") for k, v in
+              yaml.safe_load((ROOT / "pipeline" / "rules.yaml").read_text())["types"].items()}
+RULE_CODES["money_left_on_desk"] = "V03"
+RULE_CODES["unknown"] = "?"
+
+
 def probe(path: Path) -> dict:
     out = subprocess.run(
         ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
@@ -96,10 +103,11 @@ def main():
         if vid not in videos:
             unmatched.append(vid)
         types = TYPE_BY_VIDEO.get(vid, []) if has_v else []
+        codes = [RULE_CODES.get(x.rstrip("?"), "?") + ("?" if x.endswith("?") else "") for x in types]
         rows.append({
             "video": vid, "file": meta.get(vid, {}).get("file", ""), "has_violation": int(has_v),
             "timecode_sec": t if has_v else "", "description_ru": desc,
-            "mapped_type": "|".join(types), "type_confident": int(has_v and not any(x.endswith("?") for x in types)),
+            "mapped_type": "|".join(types), "catalog_code": "|".join(codes), "type_confident": int(has_v and not any(x.endswith("?") for x in types)),
         })
 
     labelled = {r["video"] for r in rows}

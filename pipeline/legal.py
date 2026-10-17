@@ -22,7 +22,7 @@ def legal_ref(ref_id: str) -> dict | None:
     d = n["documents"][r["doc"]]
     clause = r.get("clause")
     title_short = d["title"].split(" в банках")[0].split(" банков")[0].strip()
-    short = f"«{title_short}…» (постановление Правления НБРК {d['act'].replace('постановление ', '')}), {clause}"
+    short = f"{clause} «{title_short}…» (постановление Правления НБРК {d['act'].replace('постановление ', '')})"
     return {
         "document": " ".join(d["title"].split()),
         "issuer": d["issuer"],

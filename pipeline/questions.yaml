@@ -40,6 +40,11 @@ questions:
     text: >-
       A visitor is entering. Answer yes if the cashier is NOT ready to serve: standing, walking, or still
       setting up equipment instead of sitting at the desk. Answer no if the cashier is seated at the desk.
+  cashier_absent_with_visitor:
+    scope: full
+    text: >-
+      Answer yes only if a visitor (client) is at the desk while the cashier's own seat/working place behind the
+      desk is empty (the cashier has walked away). Otherwise answer no.
   # multi-frame questions (frames in time order)
   id_shown:
     scope: frames

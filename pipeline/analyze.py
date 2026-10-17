@@ -65,7 +65,7 @@ class Analyzer:
                        "personal_items_on_desk": "desk"}.get(v.type_id)
             frames_b64 = ev.evidence_frames(path, v.evidence_times, scene_boxes.get(box_obj) if box_obj else None,
                                             None, info.duration)
-            desc = f"{v.observed} {v.reason}"
+            desc = f"{v.subtype}. {v.observed} {v.reason}"
             if ref:
                 desc += f" Основание: {ref['short']}."
             out_v.append({
@@ -74,6 +74,8 @@ class Analyzer:
                 "description": desc.strip(),
                 "evidence_frames": frames_b64,
                 # extra fields (allowed inside each violation object)
+                "type_code": v.code,
+                "subtype": v.subtype,
                 "type_id": v.type_id,
                 "rule": ref,
                 "source": v.source,
