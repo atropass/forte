@@ -1,6 +1,6 @@
 # Fly.io: one machine (Redis + API/UI + workers, docker/fly-start.sh) on the `forte_data` volume.
-# Secrets (not in this file): API_KEY (jury key), VLM_API_BASE, VLM_API_KEY  ->  fly secrets set ... -a forte-vision
-# Deploy: fly deploy --remote-only   (.dockerignore keeps .env, videos and local data out of the build)
+# Secrets (not in this file): API_KEY (jury key), VLM_API_BASE, VLM_API_KEY, DET_API_BASE, DET_API_KEY  ->  fly secrets set ... -a forte-vision
+# Deploy: every push to main (CI, .github/workflows/ci.yml), or by hand: fly deploy --remote-only
 app = "forte-vision"
 primary_region = "fra"
 kill_signal = "SIGTERM"
