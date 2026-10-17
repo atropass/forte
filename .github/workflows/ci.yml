@@ -97,7 +97,7 @@ jobs:
           sed -i -e 's/^REDIS_PASSWORD=.*/REDIS_PASSWORD=ci-redis-pass/' \
                  -e 's/^COOKIE_SECURE=.*/COOKIE_SECURE=0/' -e 's|^PUBLIC_ORIGIN=.*|PUBLIC_ORIGIN=http://localhost:8080|' .env
           docker compose up -d --no-build --wait --wait-timeout 180 frontend
-          KEY=$(docker compose run --rm -T init admin create-api-key --name ci | tail -1)
+          KEY=$(docker compose run --rm -T init admin create-api-key --name ci-smoke | tail -1); test -n "$KEY"
           ffmpeg -version >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg >/dev/null)
           ffmpeg -loglevel error -f lavfi -i testsrc2=size=848x464:rate=25:duration=3 -c:v libx264 -pix_fmt yuv420p /tmp/x.mov
           set -x
