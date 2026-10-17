@@ -1,4 +1,7 @@
-"""VLM backends behind one interface. Select with env VLM_BACKEND=mlx|vllm and VLM_MODEL=<hf id>.
+"""VLM backends behind one interface. Select with env VLM_BACKEND=mlx|vllm|openai and VLM_MODEL=<hf id>.
+  mlx     Apple silicon, in-process (development)
+  vllm    NVIDIA, in-process vLLM engine
+  openai  our own vLLM server over its OpenAI-compatible HTTP API (VLM_API_BASE, VLM_API_KEY)
 
 Both backends receive exactly the same chat messages (text + PIL images) built by pipeline.vlm,
 so prompts and parsing are shared. Decoding is greedy (temperature 0) everywhere.
@@ -22,6 +25,7 @@ from PIL import Image
 DEFAULT_MODELS = {
     "mlx": "mlx-community/Qwen3-VL-4B-Instruct-4bit",
     "vllm": "Qwen/Qwen3-VL-4B-Instruct",
+    "openai": "Qwen/Qwen3-VL-4B-Instruct",
 }
 
 
@@ -167,6 +171,100 @@ class VLLMBackend(VLMBackend):
         return res
 
 
+class OpenAICompatBackend(VLMBackend):
+    """Our own vLLM server reached over its OpenAI-compatible HTTP API (`vllm serve`, e.g. the team's GPU pod).
+
+    The model still runs on our own GPU — this is not a third-party AI service — only the transport differs.
+    Env: VLM_API_BASE (…/v1), VLM_API_KEY (gateway bearer token), VLM_CONCURRENCY (parallel requests; the
+    server batches them), VLM_TIMEOUT, VLM_JPEG_QUALITY.
+    Decision mode: max_tokens=1 + top_logprobs=20, option probabilities summed over spellings.
+    """
+    name = "openai"
+
+    def __init__(self, model_id: str, base_url: str | None = None, api_key: str | None = None):
+        super().__init__(model_id)
+        import httpx
+        self.base = (base_url or os.getenv("VLM_API_BASE", "")).rstrip("/")
+        if not self.base:
+            raise RuntimeError("VLM_API_BASE is not set (e.g. https://<pod>-8000.proxy.runpod.net/v1)")
+        key = api_key if api_key is not None else os.getenv("VLM_API_KEY", "")
+        self.concurrency = int(os.getenv("VLM_CONCURRENCY", "16"))
+        self.quality = int(os.getenv("VLM_JPEG_QUALITY", "90"))
+        self.client = httpx.Client(
+            base_url=self.base, timeout=float(os.getenv("VLM_TIMEOUT", "120")),
+            headers={"Authorization": f"Bearer {key}"} if key else {},
+            limits=httpx.Limits(max_connections=self.concurrency, max_keepalive_connections=self.concurrency))
+
+    def _content(self, r: VLMRequest) -> list[dict]:
+        import base64
+        import io
+        parts = []
+        for im in r.images:
+            buf = io.BytesIO()
+            im.convert("RGB").save(buf, format="JPEG", quality=self.quality)
+            parts.append({"type": "image_url",
+                          "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()}})
+        parts.append({"type": "text", "text": r.prompt})
+        return parts
+
+    def _post(self, body: dict) -> dict:
+        delay = 1.0
+        for attempt in range(6):
+            try:
+                resp = self.client.post("/chat/completions", json=body)
+                if resp.status_code in (429, 500, 502, 503, 504):
+                    raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+                resp.raise_for_status()
+                return resp.json()
+            except Exception:  # noqa: BLE001 - transient network / gateway errors are retried
+                if attempt == 5:
+                    raise
+                time.sleep(delay)
+                delay = min(delay * 2, 15)
+        raise RuntimeError("unreachable")
+
+    def _map(self, fn, items):
+        from concurrent.futures import ThreadPoolExecutor
+        if len(items) <= 1:
+            return [fn(x) for x in items]
+        with ThreadPoolExecutor(max_workers=self.concurrency) as ex:
+            return list(ex.map(fn, items))
+
+    def _generate(self, reqs):
+        def one(r):
+            j = self._post({"model": self.model_id, "temperature": 0.0, "max_tokens": r.max_tokens,
+                            "messages": [{"role": "user", "content": self._content(r)}]})
+            return j["choices"][0]["message"]["content"] or ""
+        return self._map(one, reqs)
+
+    def _score(self, reqs, options):
+        def one(args):
+            r, opts = args
+            j = self._post({"model": self.model_id, "temperature": 0.0, "max_tokens": 1, "logprobs": True,
+                            "top_logprobs": 20, "messages": [{"role": "user", "content": self._content(r)}]})
+            return score_from_top_logprobs(j, opts)
+        return self._map(one, list(zip(reqs, options)))
+
+
+def score_from_top_logprobs(resp: dict, options: list[str]) -> dict[str, float]:
+    """Option probabilities from an OpenAI-style chat response with logprobs (first generated token)."""
+    ch = resp["choices"][0]
+    content = ((ch.get("logprobs") or {}).get("content") or [])
+    tops = content[0].get("top_logprobs", []) if content else []
+    lookup = {o.lower(): o for o in options}
+    mass = {o: 0.0 for o in options}
+    for t in tops:
+        key = str(t.get("token", "")).strip().lower()
+        if key in lookup and t.get("logprob") is not None:
+            mass[lookup[key]] += math.exp(float(t["logprob"]))
+    total = sum(mass.values())
+    if total <= 0:  # no option in the top 20: fall back to the generated text
+        txt = (ch.get("message", {}).get("content") or "").strip().lower()
+        hit = next((o for o in options if txt.startswith(o.lower())), None)
+        return {o: (1.0 if o == hit else 0.0) for o in options} if hit else {o: 1.0 / len(options) for o in options}
+    return {o: m / total for o, m in mass.items()}
+
+
 def make_backend(name: str | None = None, model_id: str | None = None, gpu_util: float | None = None) -> VLMBackend:
     name = (name or os.getenv("VLM_BACKEND") or "mlx").lower()
     model_id = model_id or os.getenv("VLM_MODEL") or DEFAULT_MODELS[name]
@@ -174,4 +272,6 @@ def make_backend(name: str | None = None, model_id: str | None = None, gpu_util:
         return MLXBackend(model_id)
     if name == "vllm":
         return VLLMBackend(model_id, gpu_util)
+    if name in ("openai", "remote"):
+        return OpenAICompatBackend(model_id)
     raise ValueError(f"unknown VLM backend {name}")

@@ -6,3 +6,4 @@ pyyaml
 pillow
 numpy
 jsonschema
+httpx

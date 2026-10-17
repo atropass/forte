@@ -64,6 +64,11 @@ state = {"analyzer": None, "loaded_at": None, "load_error": None, "models": {}}
 
 
 def _run(video: Path, jid: str, progress):
+    if state["analyzer"] is None:  # VLM was unreachable at startup (e.g. GPU pod stopped): retry now
+        progress("loading_models", 0.01)
+        load_models()
+    if state["analyzer"] is None:
+        raise RuntimeError(f"VLM unavailable: {state['load_error']}")
     return state["analyzer"].analyze(video, job_id=jid, progress=progress)
 
 
@@ -95,7 +100,7 @@ def load_models():
         an.vlm.prob([("cashier_at_desk", [dummy])])
         if aux is not None:
             aux.choose([("Answer with one letter: A or B.", [dummy], ["A", "B"])])
-        state.update(analyzer=an, loaded_at=time.time(),
+        state.update(analyzer=an, loaded_at=time.time(), load_error=None,
                      models={"vlm_backend": backend.name, "vlm": backend.model_id, "vlm_aux": aux_id or None,
                              "detector": det.model_id, "device": det.device})
         log.info("models loaded in %.1fs: %s", time.time() - t, state["models"])
