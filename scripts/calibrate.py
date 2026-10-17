@@ -124,6 +124,9 @@ def main():
               "(cash_in_machine_no_client needs balanced acc >= 0.8 and recall >= 0.67; partial_disbursement needs "
               "every judged episode right).", "",
               "Small sample (10 episodes, 4 violations): treat as a starting point, re-check on new footage."]
+    pins = yaml.safe_load((ROOT / "scripts" / "threshold_overrides.yaml").read_text()) or {}
+    out.update({k: float(v) for k, v in pins.items()})  # evidence-based pins from the full evaluation
+    lines += ["", f"Pinned from the full evaluation (scripts/threshold_overrides.yaml): {pins}"]
     thr_file = Path(os.getenv("THRESHOLDS_FILE", ROOT / "pipeline" / "thresholds.yaml"))
     thr_file.parent.mkdir(parents=True, exist_ok=True)
     thr_file.write_text(

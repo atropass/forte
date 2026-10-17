@@ -4,11 +4,11 @@ Videos: 40 unique (21 with violation, 19 clean). Duplicates X-47/X-48 excluded.
 
 | metric | value |
 |---|---|
-| video-level verdict accuracy | **0.750** (30/40) |
-| recall on violation videos | **0.524** (11/21) |
+| video-level verdict accuracy | **0.800** (32/40) |
+| recall on violation videos | **0.619** (13/21) |
 | false-positive rate on clean videos | **0.000** (0/19) |
-| type accuracy (label code among predicted codes; confirmed labels only) | 0.909 (10/11) |
-| timecode error, matching type (s): mean / median | 1.2 / 1.0 (n=10) |
+| type accuracy (label code among predicted codes; confirmed labels only) | 0.923 (12/13) |
+| timecode error, matching type (s): mean / median | 1.1 / 0.9 (n=12) |
 
 ## Per video
 
@@ -43,11 +43,11 @@ Videos: 40 unique (21 with violation, 19 clean). Duplicates X-47/X-48 excluded.
 | X-30 | 1 | X02 @ 13 | V17@4.2|X02@13.2 | ✅ | ✅ | 0.2 |
 | X-31 | 0 |  @  | — | ✅ |  |  |
 | X-32 | 1 | V17 @ 5 | V17@5.2 | ✅ | ✅ | 0.2 |
-| X-33 | 1 | V17 @ 6 | — | ❌ |  |  |
+| X-33 | 1 | V17 @ 6 | V17@5.2 | ✅ | ✅ | 0.8 |
 | X-34 | 1 | V05 @ 13|7 | — | ❌ |  |  |
 | X-35 | 0 |  @  | — | ✅ |  |  |
 | X-37 | 0 |  @  | — | ✅ |  |  |
-| X-38 | 1 | V03 @ 33 | — | ❌ |  |  |
+| X-38 | 1 | V03 @ 33 | V03@33.2 | ✅ | ✅ | 0.2 |
 | X-39 | 0 |  @  | — | ✅ |  |  |
 | X-40 | 1 | V01 @ 17 | V01@16 | ✅ | ✅ | 1.0 |
 | X-43 | 0 |  @  | — | ✅ |  |  |

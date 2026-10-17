@@ -1,8 +1,8 @@
-# written by scripts/calibrate.py — model Qwen/Qwen3-VL-4B-Instruct
+# written by scripts/calibrate.py + scripts/threshold_overrides.yaml — model Qwen/Qwen3-VL-4B-Instruct
 bag_on_desk: 0.55
 cash_in_machine: 0.2
 cashier_at_desk: 0.55
-door_open: 0.65
+door_open: 0.6
 enabled_rules: []
 handover_act: 0.35
 handover_id: 0.5

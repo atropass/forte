@@ -46,7 +46,7 @@ types:
     type: Нарушение порядка хранения наличных денег на рабочем месте кассира (неубранная наличность / открытый сейф)
     subtype: Деньги предыдущей операции на столе при подходе следующего клиента
     trigger: visitor_arrived_after_visitor
-    checks: [{q: money_on_desk, offsets: [-1.0, 0.0, 1.0], min_yes: 2}]   # just before / as the next visitor arrives (X-38: desk hidden 1 s later)
+    checks: [{q: money_on_desk, offsets: [-1.0, 0.0, 1.0], min_yes: 1}]   # one confident frame: the visitor soon hides the desk (X-38); clean videos stay < 0.3   # just before / as the next visitor arrives (X-38: desk hidden 1 s later)
     timecode_offset: 0
     observed: "На {t} с к столу подходит следующий посетитель, при этом на столе лежат наличные деньги от предыдущей операции."
     reason: "На рабочем месте должны находиться только деньги текущего клиента; ранее принятые — в хранилище под ключ."

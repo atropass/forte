@@ -1,6 +1,8 @@
 # Limitations and known failure cases
 
-Results are hints for a human reviewer, not a legal or disciplinary conclusion. Measured numbers are in
+Results are hints for a human reviewer, not a legal or disciplinary conclusion. Current numbers on the 40
+training videos: verdict accuracy 80%, recall 62%, 0 false positives on 19 clean videos (`reports/eval.md`);
+thresholds were tuned on the same videos, so expect lower numbers on unseen footage. Measured numbers are in
 `reports/eval.md` (training videos) and `reports/robustness.md` (geometric augmentations); the summary
 below is updated from them.
 
@@ -44,3 +46,14 @@ A higher-resolution camera (≥ 1080p) over the desk would fix all four.
 * One GPU worker: jobs queue. A 145 s video must finish in ≤ 5 min including queueing. Confirm with
   `scripts/bench.py` on the target GPU.
 * The Mac/MLX path is for development (~6 s of processing per second of video on an M1 Pro).
+
+## 6. Known misses on the training set (reports/eval.md)
+| Video | Type | Why missed |
+|---|---|---|
+| X-2, X-34 | V05 client ID | ID card ≈ banknotes at 464×848; V05 fires only when no ID-like action is seen in the whole episode |
+| X-17 | V13 collector documents | documents not visible |
+| X-24 | V03 key in safe lock | lock ~3 px |
+| X-1 | X03 partial disbursement | rule did not pass calibration (could not separate from clean disbursements) → disabled |
+| X-44 | V03 cash in counting machine | rule did not pass calibration (clean X-43/X-45 look the same) → disabled |
+| X-13 | unconfirmed type | team unsure; same desk as clean X-14 |
+| X-46 | V01 drinking at the desk | strongest frame 0.62 vs threshold 0.9; a lower threshold makes clean X-16 (collector's bag) fire |

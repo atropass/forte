@@ -1,0 +1,96 @@
+X-1: no_violation [] label=['X03']@[22.0] (5s)
+X-2: no_violation [] label=['V05']@[10.0] (3s)
+X-3: no_violation [] label=[]@[] (5s)
+X-4: violation [('V03', 56.8)] label=['V03']@[57.0, 68.0] (14s)
+X-5: no_violation [] label=[]@[] (13s)
+X-8: no_violation [] label=[]@[] (6s)
+X-10: no_violation [] label=[]@[] (3s)
+X-11: violation [('X01', 19.5)] label=['X01']@[18.0] (7s)
+X-12: no_violation [] label=[]@[] (8s)
+X-13: no_violation [] label=['']@[47.0] (12s)
+X-14: no_violation [] label=[]@[] (20s)
+X-15: violation [('V03', 14.5)] label=['V03']@[15.0] (5s)
+X-16: no_violation [] label=[]@[] (4s)
+X-17: no_violation [] label=['V13']@[7.0] (2s)
+X-18: violation [('V16', 18.8)] label=['V16']@[20.0] (6s)
+X-19: no_violation [] label=[]@[] (12s)
+X-20: violation [('V03', 6.0)] label=['V03']@[5.0] (4s)
+X-21: no_violation [] label=[]@[] (3s)
+X-22: violation [('X01', 16.0)] label=['V03']@[14.0] (6s)
+X-23: no_violation [] label=[]@[] (5s)
+X-24: no_violation [] label=['V03']@[8.0] (5s)
+X-25: no_violation [] label=[]@[] (8s)
+X-26: violation [('V03', 11.5)] label=['V03']@[9.0] (7s)
+X-27: no_violation [] label=[]@[] (8s)
+X-28: violation [('X01', 11.0)] label=['X01']@[7.0] (126s)
+X-29: no_violation [] label=[]@[] (7s)
+X-30: violation [('V17', 4.2), ('X02', 13.2)] label=['X02']@[13.0] (4s)
+X-31: no_violation [] label=[]@[] (4s)
+X-32: violation [('V17', 5.2)] label=['V17']@[5.0] (4s)
+X-33: no_violation [] label=['V17']@[6.0] (3s)
+X-34: no_violation [] label=['V05']@[13.0, 7.0] (4s)
+X-35: no_violation [] label=[]@[] (10s)
+X-37: no_violation [] label=[]@[] (4s)
+X-38: no_violation [] label=['V03']@[33.0] (11s)
+X-39: no_violation [] label=[]@[] (16s)
+X-40: violation [('V01', 16.0)] label=['V01']@[17.0] (8s)
+X-43: no_violation [] label=[]@[] (4s)
+X-44: no_violation [] label=['V03']@[16.0] (4s)
+X-45: no_violation [] label=[]@[] (5s)
+X-46: no_violation [] label=['V01', 'V03', 'V03']@[11.0] (3s)
+# Phase 4 — Evaluation on the training videos
+
+Videos: 40 unique (21 with violation, 19 clean). Duplicates X-47/X-48 excluded.
+
+| metric | value |
+|---|---|
+| video-level verdict accuracy | **0.750** (30/40) |
+| recall on violation videos | **0.524** (11/21) |
+| false-positive rate on clean videos | **0.000** (0/19) |
+| type accuracy (label code among predicted codes; confirmed labels only) | 0.909 (10/11) |
+| timecode error, matching type (s): mean / median | 1.2 / 1.0 (n=10) |
+
+## Per video
+
+| video | label | label codes @ t | predicted codes @ t | verdict | type | tc err |
+|---|---|---|---|---|---|---|
+| X-1 | 1 | X03 @ 22 | — | ❌ |  |  |
+| X-2 | 1 | V05 @ 10 | — | ❌ |  |  |
+| X-3 | 0 |  @  | — | ✅ |  |  |
+| X-4 | 1 | V03 @ 57|68 | V03@56.8 | ✅ | ✅ | 0.2 |
+| X-5 | 0 |  @  | — | ✅ |  |  |
+| X-8 | 0 |  @  | — | ✅ |  |  |
+| X-10 | 0 |  @  | — | ✅ |  |  |
+| X-11 | 1 | X01 @ 18 | X01@19.5 | ✅ | ✅ | 1.5 |
+| X-12 | 0 |  @  | — | ✅ |  |  |
+| X-13 | 1 |  @ 47 | — | ❌ |  |  |
+| X-14 | 0 |  @  | — | ✅ |  |  |
+| X-15 | 1 | V03 @ 15 | V03@14.5 | ✅ | ✅ | 0.5 |
+| X-16 | 0 |  @  | — | ✅ |  |  |
+| X-17 | 1 | V13 @ 7 | — | ❌ |  |  |
+| X-18 | 1 | V16 @ 20 | V16@18.8 | ✅ | ✅ | 1.2 |
+| X-19 | 0 |  @  | — | ✅ |  |  |
+| X-20 | 1 | V03 @ 5 | V03@6 | ✅ | ✅ | 1.0 |
+| X-21 | 0 |  @  | — | ✅ |  |  |
+| X-22 | 1 | V03 @ 14 | X01@16 | ✅ | ❌ |  |
+| X-23 | 0 |  @  | — | ✅ |  |  |
+| X-24 | 1 | V03 @ 8 | — | ❌ |  |  |
+| X-25 | 0 |  @  | — | ✅ |  |  |
+| X-26 | 1 | V03 @ 9 | V03@11.5 | ✅ | ✅ | 2.5 |
+| X-27 | 0 |  @  | — | ✅ |  |  |
+| X-28 | 1 | X01 @ 7 | X01@11 | ✅ | ✅ | 4.0 |
+| X-29 | 0 |  @  | — | ✅ |  |  |
+| X-30 | 1 | X02 @ 13 | V17@4.2|X02@13.2 | ✅ | ✅ | 0.2 |
+| X-31 | 0 |  @  | — | ✅ |  |  |
+| X-32 | 1 | V17 @ 5 | V17@5.2 | ✅ | ✅ | 0.2 |
+| X-33 | 1 | V17 @ 6 | — | ❌ |  |  |
+| X-34 | 1 | V05 @ 13|7 | — | ❌ |  |  |
+| X-35 | 0 |  @  | — | ✅ |  |  |
+| X-37 | 0 |  @  | — | ✅ |  |  |
+| X-38 | 1 | V03 @ 33 | — | ❌ |  |  |
+| X-39 | 0 |  @  | — | ✅ |  |  |
+| X-40 | 1 | V01 @ 17 | V01@16 | ✅ | ✅ | 1.0 |
+| X-43 | 0 |  @  | — | ✅ |  |  |
+| X-44 | 1 | V03 @ 16 | — | ❌ |  |  |
+| X-45 | 0 |  @  | — | ✅ |  |  |
+| X-46 | 1 | V01|V03|V03 @ 11 | — | ❌ |  |  |
