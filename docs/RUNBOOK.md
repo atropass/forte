@@ -2,9 +2,9 @@
 
 Two deployments, same commands with a different prefix:
 
-| | Public server (Hetzner, `ssh root@95.217.164.246`, `cd /opt/forte`) | Docker Compose elsewhere |
+| | Public server (Hetzner, `ssh user@<your-server-ip>`, `cd /opt/forte`) | Docker Compose elsewhere |
 |---|---|---|
-| URL | https://95-217-164-246.sslip.io (Caddy, Let's Encrypt) | `http://<host>:8080` (frontend nginx) |
+| URL | https://forte-compliance.example.kz (Caddy, Let's Encrypt) | `http://<host>:8080` (frontend nginx) |
 | Admin CLI | `docker compose run --rm init admin …` | same |
 | Logs | `docker compose logs -f api worker caddy` | `docker compose logs -f api worker` |
 | Restart | `docker compose --profile tls restart api worker` | `docker compose restart api worker` |
@@ -29,7 +29,7 @@ unreachable) and alert after 2 consecutive failures.
 1. Capacity: the server has 2 vCPU / 4 GB; 5 simultaneous videos finished in ≤ 80 s each (2026-10-18). The CPU
    (video decoding) is the first bottleneck: if the GPUs idle while jobs queue, resize the server (Hetzner: more
    vCPU) and raise `WORKER_COUNT` in `/opt/forte/.env`. Check with
-   `make loadtest URL=https://95-217-164-246.sslip.io KEY=<jury key> BURST=5`: every video < 300 s.
+   `make loadtest URL=https://forte-compliance.example.kz KEY=<jury key> BURST=5`: every video < 300 s.
 2. `curl /readyz?strict=1` → 200, `calibration.model_match` true, no warnings.
 3. One end-to-end check: `python sdk/client.py`-style call or `make eval-api URL=… KEY=… ` with one video.
 4. Watch `fv_queue_depth` and `fv_job_errors` during the run.
@@ -79,7 +79,7 @@ Rotate GPU tokens: see GPU_ACCESS.md → "Redeploy / rotate keys".
 ## Deploys
 * Workers finish running jobs on SIGTERM (`stop_grace_period: 330s`).
 * Server: every push to `main` deploys after CI (job `deploy`). By hand from a clone:
-  `git archive HEAD | ssh root@95.217.164.246 'tar -x -C /opt/forte' && ssh root@95.217.164.246 'cd /opt/forte && docker compose --profile tls up -d --build'`.
+  `git archive HEAD | ssh user@<your-server-ip> 'tar -x -C /opt/forte' && ssh user@<your-server-ip> 'cd /opt/forte && docker compose --profile tls up -d --build'`.
   Rollback: the same with `git archive <previous commit>`.
 * Compose: set `IMAGE_TAG=sha-<commit>` in `.env`, `docker compose pull && docker compose up -d --no-build`.
   Rollback: the previous `IMAGE_TAG`, same commands.

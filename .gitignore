@@ -4,7 +4,13 @@ __pycache__/
 .DS_Store
 # confidential dataset & derived frames: never commit
 open/
+videos/
 *.mov
+*.mp4
+*.mkv
+*.webm
+reports/eval/*.log
+reports/feasibility/*.log
 Yerkes.xlsx
 Кейс_ForteBank.docx
 reports/contact_sheets/
